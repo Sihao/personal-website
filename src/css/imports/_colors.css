@@ -52,6 +52,10 @@
   background-color: var(--off-white);
 }
 
+.bg-tertiary{
+  background-color: var(--tertiary);
+}
+
 .bg-grey-1 {
   background-color: var(--grey-1);
 }
