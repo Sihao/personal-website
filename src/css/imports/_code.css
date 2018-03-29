@@ -1,8 +1,23 @@
 pre {
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
-  overflow: scroll;
+  overflow: auto;
   margin-bottom: var(--spacing-medium);
   background-color: var(--grey-1);
-  padding: var(--spacing-small);
+  padding: var(--spacing-medium);
+  border-radius: 0.3em;
+  -moz-tab-size: 4;
+  -o-tab-size: 4;
+  tab-size: 4;
+}
+
+pre code{
+	background: none;
+}
+
+code {
+	background: var(--grey-2);
+	padding-left: var(--spacing-extra-small);
+	padding-right: var(--spacing-extra-small);
+	font-family: var(--font-mono);
 }
