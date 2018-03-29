@@ -12,6 +12,9 @@
 
 	/* Typography */
 	--font-family: Nunito Sans, -apple-system, BlinkMacSystemFont, 'avenir next', avenir, helvetica, 'helvetica neue', ubuntu, roboto, noto, 'segoe ui', arial, sans-serif;
+	--font-mono: Fira Mono, monospace;
+	--font-header: Inter UI, sans-serif;
+	--font-body: Libre Baskerville, serif;
 	--line-height: 1.5;
 
 	--font-size: 18px;
