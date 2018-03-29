@@ -24,10 +24,6 @@ body {
   font-family: var(--font-header);
  }
 
-h1 {
-  text-decoration: none;
-}
-
 p {
   margin-bottom: var(--spacing-medium);
   max-width: 32rem;
