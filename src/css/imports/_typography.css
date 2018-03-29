@@ -11,7 +11,7 @@ html {
 
 
 body {
-  font-family: var(--font-family);
+  font-family: var(--font-header);
   font-size: var(--spacing-medium);
   line-height: var(--line-height);
   font-weight: var(--body-font-weight);
@@ -20,9 +20,18 @@ body {
   background-color: var(--off-white);
  }
 
+ h1,h2,h3,h4,h5 {
+  font-family: var(--font-header);
+ }
+
+h1 {
+  text-decoration: none;
+}
+
 p {
   margin-bottom: var(--spacing-medium);
   max-width: 32rem;
+  font-family: var(--font-paragraph);
 }
 
 strong {
