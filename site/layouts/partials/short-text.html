@@ -1,6 +1,15 @@
 <div class="bg-off-white pv4">
-  <div class="flex-l mhn1-l ph3 center mw7">
-    <h2 class="f2 b lh-title mb2 w-40-l">{{.heading}}</h2>
-    <p class="w-60-l mb0">{{.text}}</p>
-  </div>
+    <div class="flex-l mhn1-l ph7 center mw9">
+        <div class="w-third ph5">
+            <img src={{.image}} class="br-100 w-100">
+        </div>
+        <div class="mhn1-r ph3 center mw7 w-two-thirds">
+            <h2 class="f3 b lh-title mb2 w-40-l">{{.heading}}</h2>
+            <p class="w-100-l mb0">{{.text}}</p>
+                <div class="fl">
+        {{ partial "social-icon" (dict "twitter_link" "https:twitter.com" "github_link" "https:github.com" "linkedin_link" "https:linkedin.com")}}
+    </div>
+        </div>
+    </div>
+
 </div>
