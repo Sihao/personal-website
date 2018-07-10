@@ -1,6 +1,6 @@
 ---
 title: Test
-date: 2018-03-28T22:18:42.120Z
+date: 2018-03-28T22:18:42.00Z
 description: A little test post.
 image: /img/about-jumbotron.jpg
 ---
