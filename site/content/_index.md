@@ -1,10 +1,11 @@
 ---
 title: "Sihao Lu"
 subtitle: A personal blog
-image: /img/home-jumbotron.jpg
 blurb:
-    heading: Who am I?
+    heading: About me
     text: "I am currently a PhD student at Imperial College London. I study the role of astrocytes in auditory processing using two-photon microscopy."
+    image: /img/sihao.png
+
 
 ---
 
