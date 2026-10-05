@@ -6,7 +6,10 @@
 //   - basal Poisson firing in every neuron,
 //   - assembly events: a spatially clustered group fires together, the activity
 //     spreading outward from the assembly's centre as a travelling wave,
-//   - a "stimulus" under the pointer that raises the local firing rate.
+//   - a "stimulus" under the pointer that raises the local firing rate,
+//   - an evoked burst around each click or tap.
+// When the visitor prefers reduced motion, spontaneous activity is off: the
+// field starts as a still frame and only moves in response to the pointer.
 (function () {
   "use strict";
 
@@ -24,6 +27,8 @@
   var WAVE_SPEED = 500;           // px / s
   var STIM_RATE = 6;              // peak spikes / s under the pointer
   var STIM_SIGMA = 45;            // px
+  var EVOKED_SIGMA = 55;          // px, spread of the click / tap burst
+  var EVOKED_SPIKES = 2;          // spikes per recruited neuron
   var TAU_DECAY = 0.9;            // s, calcium decay
   var TAU_RISE = 0.05;            // s, indicator rise
   var K_D = 0.8;                  // indicator half-saturation, in spikes
@@ -81,6 +86,22 @@
         p.mouseY >= 0 && p.mouseY <= p.height;
     }
 
+    function evoke(e) {
+      var rect = el.getBoundingClientRect();
+      var x = e.clientX - rect.left;
+      var y = e.clientY - rect.top;
+      var k = 1 / (2 * EVOKED_SIGMA * EVOKED_SIGMA);
+      neurons.forEach(function (n) {
+        var d2 = (n.x - x) * (n.x - x) + (n.y - y) * (n.y - y);
+        if (Math.random() < Math.exp(-d2 * k)) n.c += EVOKED_SPIKES;
+      });
+    }
+
+    function settled() {
+      return !pointerInside && pending.length === 0 &&
+        neurons.every(function (n) { return n.f < 0.01; });
+    }
+
     function step(dt) {
       var decay = Math.exp(-dt / TAU_DECAY);
       var rise = 1 - Math.exp(-dt / TAU_RISE);
@@ -92,7 +113,7 @@
       t += dt;
 
       assemblies.forEach(function (members) {
-        if (Math.random() < ASSEMBLY_RATE * dt) {
+        if (!opts.reducedMotion && Math.random() < ASSEMBLY_RATE * dt) {
           members.forEach(function (m) {
             if (Math.random() < ASSEMBLY_P_FIRE) pending.push({ t: t + m.delay, n: m.n });
           });
@@ -106,7 +127,7 @@
       });
 
       neurons.forEach(function (n) {
-        var rate = BASAL_RATE;
+        var rate = opts.reducedMotion ? 0 : BASAL_RATE;
         if (stim) {
           var d2 = (n.x - mx) * (n.x - mx) + (n.y - my) * (n.y - my);
           rate += STIM_RATE * Math.exp(-d2 * k);
@@ -126,15 +147,22 @@
       p.pixelDensity(Math.min(2, window.devicePixelRatio || 1));
       p.canvas.style.display = "block";
       p.canvas.setAttribute("aria-hidden", "true");
-      el.addEventListener("pointerenter", function () { pointerInside = true; });
+      el.addEventListener("pointerenter", function () {
+        pointerInside = true;
+        if (opts.reducedMotion) p.loop();
+      });
       el.addEventListener("pointerleave", function () { pointerInside = false; });
+      el.addEventListener("pointerdown", function (e) {
+        evoke(e);
+        if (opts.reducedMotion) p.loop();
+      });
       layout();
       prewarm();
       if (opts.reducedMotion) p.noLoop();
     };
 
     p.draw = function () {
-      if (!opts.reducedMotion) step(Math.min(p.deltaTime / 1000, 0.05));
+      if (p.frameCount > 1) step(Math.min(p.deltaTime / 1000, 0.05));
 
       p.background(BG[0], BG[1], BG[2]);
       p.noStroke();
@@ -162,6 +190,8 @@
         p.strokeWeight(1);
         p.circle(p.mouseX, p.mouseY, STIM_SIGMA * 2);
       }
+
+      if (opts.reducedMotion && settled()) p.noLoop();
     };
 
     p.windowResized = function () {
