@@ -1,5 +1,7 @@
 {{ define "main" }}
 
+{{ partial "p5-sketch" (dict "name" "neurons" "page" . "height" 220 "label" "Simulated calcium imaging: neurons light up as they fire, singly and in travelling waves" "caption" "Simulated calcium imaging. Hover or tap the field to stimulate it.") }}
+
 
 {{ partial "short-text" .Params.blurb }}
 
