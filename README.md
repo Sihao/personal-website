@@ -54,3 +54,5 @@ All SVG icons stored in `site/static/img/icons` are automatically optimized with
 * Embed it in Markdown content with `{{< p5 sketch="<name>" height="240" label="..." caption="..." >}}`.
 
 `site/static/js/p5-mount.js` instantiates each sketch and pauses it while it is scrolled out of view. To upgrade p5.js, change the version and the `integrity` hash in `site/layouts/_default/baseof.html`.
+
+Sketches can declare libraries with the `requires` parameter (`"requires" "brush"` in the partial, `requires="brush"` in the shortcode). `p5-mount.js` loads them before starting the sketch and passes `opts.libs.<name>` (true or false) so the sketch can fall back. The only library is currently [p5.brush](https://github.com/acamposuribe/p5.brush), loaded from jsDelivr when the browser supports WebGL2. p5.brush hooks into every p5 instance on a page and expects a WEBGL canvas, so every sketch on a page that requires it must use `WEBGL`. Library versions and `integrity` hashes live in `LIBS` in `p5-mount.js`.
