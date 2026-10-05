@@ -1,15 +1,22 @@
 :root {
-	/* Colors */
-	--primary: rgba(255, 68, 0, 1);
-	--highlight: rgba(254, 213, 198, 1);
-	--white: rgba(255, 255, 255, 1);
-	--off-white: rgba(255, 253, 252, 1);
-	--grey-1: rgba(245, 243, 242, 1);
-	--grey-2: rgba(235, 231, 230, 1);
-	--grey-3: rgba(89, 87, 86, 1);
-	--grey-4: rgba(66, 64, 64, 1);
-	--black: rgba(43, 37, 35, 1);
-	--tertiary: #F5F7FAFF;
+	/* Palette */
+	--black: #000000;
+	--prussian-blue: #14213d;
+	--orange: #fca311;
+	--alabaster-grey: #e5e5e5;
+	--white: #ffffff;
+
+	/* Roles. Orange has 2.0:1 contrast on white, so it is used only on
+	   prussian blue (7.9:1) or behind black text (10.4:1). */
+	--primary: #14213d;    /* prussian blue */
+	--accent: #fca311;     /* orange */
+	--highlight: #fca311;  /* orange */
+	--off-white: #ffffff;  /* white */
+	--grey-1: #e5e5e5;     /* alabaster grey */
+	--grey-2: #e5e5e5;     /* alabaster grey */
+	--grey-3: #4f586e;     /* prussian blue at 75% on white; 7.1:1 on white */
+	--grey-4: #14213d;     /* prussian blue */
+	--tertiary: #e5e5e5;   /* alabaster grey */
 
 	/* Typography */
 	--font-family: Nunito Sans, -apple-system, BlinkMacSystemFont, 'avenir next', avenir, helvetica, 'helvetica neue', ubuntu, roboto, noto, 'segoe ui', arial, sans-serif;

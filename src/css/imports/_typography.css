@@ -6,7 +6,7 @@ html {
   @media (--breakpoint-large) {
     font-size: var(--font-size-l);
   }
-  background-color: var(--black);
+  background-color: var(--prussian-blue);
 }
 
 

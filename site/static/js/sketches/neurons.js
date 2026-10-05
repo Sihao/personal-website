@@ -13,9 +13,9 @@
 (function () {
   "use strict";
 
-  var BG = [255, 253, 252];       // --off-white
-  var REST = [235, 231, 230];     // --grey-2
-  var ACTIVE = [255, 68, 0];      // --primary
+  var BG = [20, 33, 61];          // --prussian-blue
+  var REST = [66, 76, 98];        // --alabaster-grey at 22% on --prussian-blue
+  var ACTIVE = [252, 163, 17];    // --orange
 
   var SPACING = 22;               // px between neighbouring somata
   var MAX_NEURONS = 900;
@@ -169,9 +169,9 @@
 
       neurons.forEach(function (n) {
         if (n.f < 0.03) return;
-        p.fill(ACTIVE[0], ACTIVE[1], ACTIVE[2], 30 * n.f);
+        p.fill(ACTIVE[0], ACTIVE[1], ACTIVE[2], 45 * n.f);
         p.circle(n.x, n.y, n.r * (5 + 6 * n.f));
-        p.fill(ACTIVE[0], ACTIVE[1], ACTIVE[2], 60 * n.f);
+        p.fill(ACTIVE[0], ACTIVE[1], ACTIVE[2], 90 * n.f);
         p.circle(n.x, n.y, n.r * (3 + 2 * n.f));
       });
 
