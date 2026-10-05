@@ -44,3 +44,13 @@ All SVG icons stored in `site/static/img/icons` are automatically optimized with
   <use xlink:href="#SVG-ID"></use>
 </svg>
 ```
+
+## p5.js sketches
+
+[p5.js](https://p5js.org) sketches run in the browser and are served as static files, outside the Webpack pipeline. p5.js is loaded from jsDelivr only on pages that embed a sketch.
+
+* Add a sketch as `site/static/js/sketches/<name>.js`. It registers itself on `window.p5Sketches.<name>` as a function `(p, opts)` that assigns `p.setup`, `p.draw`, and so on, in p5 [instance mode](https://github.com/processing/p5.js/wiki/Global-and-instance-mode). `opts.el` is the container and `opts.reducedMotion` is true when the visitor prefers reduced motion. See `neurons.js`.
+* Embed it in a template with `{{ partial "p5-sketch" (dict "name" "<name>" "page" . "height" 240 "label" "Description for screen readers" "caption" "Optional caption") }}`.
+* Embed it in Markdown content with `{{< p5 sketch="<name>" height="240" label="..." caption="..." >}}`.
+
+`site/static/js/p5-mount.js` instantiates each sketch and pauses it while it is scrolled out of view. To upgrade p5.js, change the version and the `integrity` hash in `site/layouts/_default/baseof.html`.

@@ -1,0 +1,9 @@
+{{/* Embeds a p5.js sketch from /js/sketches/<name>.js.
+     Params (dict): name, page, height (px, default 240), label, caption.
+     Flags the page so baseof.html loads p5.js and the mount script. */}}
+{{ .page.Scratch.Set "p5" true }}
+<figure class="ma0">
+  <div data-p5-sketch="{{ .name }}" role="img" aria-label="{{ .label | default "Animated p5.js sketch" }}" style="height: {{ .height | default 240 }}px; touch-action: pan-y;"></div>
+  {{ with .caption }}<figcaption class="f6 grey-3 tr ph3 pt2">{{ . }}</figcaption>{{ end }}
+</figure>
+<script defer src="/js/sketches/{{ .name }}.js"></script>
