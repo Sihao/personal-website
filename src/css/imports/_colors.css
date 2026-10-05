@@ -1,5 +1,29 @@
 /* Text colors */
 
+.prussian-blue {
+  color: var(--prussian-blue);
+}
+
+.orange {
+  color: var(--orange);
+}
+
+.alabaster-grey {
+  color: var(--alabaster-grey);
+}
+
+.bg-prussian-blue {
+  background-color: var(--prussian-blue);
+}
+
+.bg-orange {
+  background-color: var(--orange);
+}
+
+.bg-alabaster-grey {
+  background-color: var(--alabaster-grey);
+}
+
 .primary {
   color: var(--primary);
 }
