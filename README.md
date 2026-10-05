@@ -49,10 +49,12 @@ All SVG icons stored in `site/static/img/icons` are automatically optimized with
 
 [p5.js](https://p5js.org) sketches run in the browser and are served as static files, outside the Webpack pipeline. p5.js is loaded from jsDelivr only on pages that embed a sketch.
 
-* Add a sketch as `site/static/js/sketches/<name>.js`. It registers itself on `window.p5Sketches.<name>` as a function `(p, opts)` that assigns `p.setup`, `p.draw`, and so on, in p5 [instance mode](https://github.com/processing/p5.js/wiki/Global-and-instance-mode). `opts.el` is the container and `opts.reducedMotion` is true when the visitor prefers reduced motion. See `neurons.js`.
+* Add a sketch as `site/static/js/sketches/<name>.js`. It registers itself on `window.p5Sketches.<name>` as a function `(p, opts)` that assigns `p.setup`, `p.draw`, and so on, in p5 [instance mode](https://github.com/processing/p5.js/wiki/Global-and-instance-mode). `opts.el` is the container and `opts.reducedMotion` is true when the visitor prefers reduced motion. See `astrocytes.js`.
 * Embed it in a template with `{{ partial "p5-sketch" (dict "name" "<name>" "page" . "height" 240 "label" "Description for screen readers" "caption" "Optional caption") }}`.
 * Embed it in Markdown content with `{{< p5 sketch="<name>" height="240" label="..." caption="..." >}}`.
 
 `site/static/js/p5-mount.js` instantiates each sketch and pauses it while it is scrolled out of view. To upgrade p5.js, change the version and the `integrity` hash in `site/layouts/_default/baseof.html`.
 
 Sketches can declare libraries with the `requires` parameter (`"requires" "brush"` in the partial, `requires="brush"` in the shortcode). `p5-mount.js` loads them before starting the sketch and passes `opts.libs.<name>` (true or false) so the sketch can fall back. The only library is currently [p5.brush](https://github.com/acamposuribe/p5.brush), loaded from jsDelivr when the browser supports WebGL2. p5.brush hooks into every p5 instance on a page and expects a WEBGL canvas, so every sketch on a page that requires it must use `WEBGL`. Library versions and `integrity` hashes live in `LIBS` in `p5-mount.js`.
+
+The homepage astrocytes are sprites from `site/static/img/astrocytes.webp`, painted with p5.brush ahead of time rather than in the visitor's browser, because watercolor fills are too slow to paint at load. To repaint them, open `tools/astrocyte-atlas.html` in a browser with WebGL2, download the result, and replace `site/static/img/astrocytes.webp`. Change `SEED` in the tool for a different set of cells, and keep its atlas layout constants in sync with `astrocytes.js`.

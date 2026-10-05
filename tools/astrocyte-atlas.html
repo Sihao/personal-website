@@ -1,0 +1,241 @@
+<!doctype html>
+<!--
+  Paints the sprite atlas used by site/static/js/sketches/astrocytes.js.
+
+  Open this file in a browser with WebGL2. p5.brush paints six astrocytes and
+  two patches of neuropil in black watercolor on white; the page converts
+  pigment density into the alpha channel of a white image and offers it as
+  astrocytes.webp. Save it to site/static/img/astrocytes.webp.
+
+  Painting is seeded, so the same SEED gives the same layout. It takes a few
+  seconds on a GPU.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Astrocyte atlas</title>
+  <style>
+    body { margin: 16px; font-family: sans-serif; background: #14213d; color: #e5e5e5; }
+    body > canvas, main > canvas { display: none; }
+    img { max-width: 100%; background: #14213d; }
+    a { color: #fca311; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.min.js" integrity="sha384-Cs48F1uukMPysq29xNsf/FZL5ZNGsPfi6lDSGOxo6dypVFFiWO9Q3YbRKoXPPBii" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5.brush@2.2.3/dist/p5.brush.js" integrity="sha384-kwWM3zLjD/CdRap70WTKAsSsnuRP+m8UUSUCTvKE0YT9kCV50Lf9T33B819pu4hh" crossorigin="anonymous"></script>
+</head>
+<body>
+  <p id="status">Painting…</p>
+  <script>
+    // Keep in sync with astrocytes.js.
+    var CELL = 320;
+    var COLS = 4;
+    var ASTROCYTES = 6;
+    var NEUROPIL = 2;
+    var SEED = 7;
+
+    var W = COLS * CELL;
+    var H = Math.ceil((ASTROCYTES + NEUROPIL) / COLS) * CELL;
+
+    // Atlas pixel coordinates -> WEBGL coordinates (origin at the centre).
+    function P(x, y) { return [x - W / 2, y - H / 2]; }
+
+    // Closed irregular outline around (cx, cy).
+    function blob(cx, cy, r, roughness, n) {
+      var pts = [];
+      var phase = random(1000);
+      for (var i = 0; i < n; i++) {
+        var a = (i / n) * TWO_PI;
+        var k = 1 + roughness * (noise(phase + Math.cos(a), phase + Math.sin(a)) * 2 - 1);
+        pts.push(P(cx + Math.cos(a) * r * k, cy + Math.sin(a) * r * k));
+      }
+      return pts;
+    }
+
+    // Smoothly curving centreline from (x, y) with initial heading a: the
+    // curvature, not the heading, takes a damped random walk.
+    function wander(x, y, a, length, steps, wiggle) {
+      var pts = [[x, y]];
+      var ds = length / steps;
+      var k = 0;
+      for (var i = 0; i < steps; i++) {
+        k = 0.7 * k + random(-wiggle, wiggle);
+        a += k;
+        x += Math.cos(a) * ds;
+        y += Math.sin(a) * ds;
+        pts.push([x, y]);
+      }
+      return pts;
+    }
+
+    function widthAt(i, n, w0, w1) {
+      return w1 + (w0 - w1) * Math.pow(1 - i / (n - 1), 0.9);
+    }
+
+    // Tapered polygon around a centreline.
+    function ribbon(path, w0, w1) {
+      var left = [];
+      var right = [];
+      var n = path.length;
+      for (var i = 0; i < n; i++) {
+        var a = path[Math.max(0, i - 1)];
+        var b = path[Math.min(n - 1, i + 1)];
+        var tx = b[0] - a[0];
+        var ty = b[1] - a[1];
+        var len = Math.hypot(tx, ty) || 1;
+        var w = widthAt(i, n, w0, w1) / 2;
+        left.push(P(path[i][0] - (ty / len) * w, path[i][1] + (tx / len) * w));
+        right.push(P(path[i][0] + (ty / len) * w, path[i][1] - (tx / len) * w));
+      }
+      return left.concat(right.reverse());
+    }
+
+    function heading(path, i) {
+      var a = path[Math.max(0, i - 1)];
+      var b = path[Math.min(path.length - 1, i + 1)];
+      return Math.atan2(b[1] - a[1], b[0] - a[0]);
+    }
+
+    function wash(opacity, bleed, texture, border) {
+      brush.fill(0, 0, 0, opacity);
+      brush.fillBleed(bleed, "out");
+      brush.fillTexture(texture, border);
+    }
+
+    // One process and its side branches: a faint wide halo, a narrower core,
+    // and small washes along it for the fine processes that branch off it.
+    function process(x, y, a, length, w0, depth) {
+      var steps = Math.max(6, Math.round(length / 6));
+      var path = wander(x, y, a, length, steps, 0.09);
+      var w1 = Math.max(1, w0 * 0.1);
+      wash(35, 0.25, 0.7, 0.2);
+      brush.polygon(ribbon(path, w0 * 2.4, w1 * 3));
+      wash(depth === 0 ? 95 : 75, 0.12, 0.6, 0.35);
+      brush.polygon(ribbon(path, w0, w1));
+      if (depth < 2) {
+        for (var b = 2; b < steps; b += 4) {
+          var off = random(-1, 1) * widthAt(b, steps + 1, w0, w1) * 2;
+          var h = heading(path, b) + Math.PI / 2;
+          wash(22, 0.35, 0.7, 0.15);
+          brush.polygon(blob(path[b][0] + Math.cos(h) * off, path[b][1] + Math.sin(h) * off,
+            widthAt(b, steps + 1, w0, w1) * random(1.2, 2.2), 0.5, 12));
+        }
+      }
+      if (depth >= 2) return;
+      var children = depth === 0 ? floor(random(2, 4)) : floor(random(0, 3));
+      for (var k = 0; k < children; k++) {
+        var j = floor(random(0.25, 0.8) * steps);
+        var side = random() < 0.5 ? -1 : 1;
+        process(
+          path[j][0], path[j][1],
+          heading(path, j) + side * random(0.3, 0.7),
+          length * (1 - j / steps) * random(0.7, 1.1),
+          widthAt(j, steps + 1, w0, w1) * 0.7,
+          depth + 1
+        );
+      }
+    }
+
+    function astrocyte(cx, cy) {
+      var R = CELL / 2;
+      // Territory of fine processes: many faint, overlapping washes.
+      for (var t = 0; t < 16; t++) {
+        var ta = random(TWO_PI);
+        var td = R * Math.sqrt(random()) * 0.45;
+        wash(18, 0.4, 0.7, 0.1);
+        brush.polygon(blob(cx + Math.cos(ta) * td, cy + Math.sin(ta) * td, R * random(0.12, 0.22), 0.5, 18));
+      }
+
+      var n = floor(random(6, 10));
+      var a0 = random(TWO_PI);
+      for (var i = 0; i < n; i++) {
+        var a = a0 + (i / n) * TWO_PI + random(-0.3, 0.3);
+        var r0 = R * 0.07;
+        process(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, a,
+          R * random(0.55, 0.9), R * random(0.07, 0.11), 0);
+      }
+
+      // Soma.
+      wash(150, 0.2, 0.5, 0.5);
+      brush.polygon(blob(cx, cy, R * 0.13, 0.3, 40));
+    }
+
+    function neuropil(cx, cy) {
+      var R = CELL / 2;
+      for (var i = 0; i < 26; i++) {
+        var a = random(TWO_PI);
+        var d = R * Math.sqrt(random()) * 0.8;
+        wash(random(25, 50), random(0.2, 0.4), 0.7, 0.3);
+        brush.polygon(blob(cx + Math.cos(a) * d, cy + Math.sin(a) * d, R * random(0.04, 0.12), 0.4, 14));
+      }
+      for (var k = 0; k < 4; k++) {
+        var a2 = random(TWO_PI);
+        var d2 = R * random(0.2, 0.6);
+        var path = wander(cx + Math.cos(a2) * d2, cy + Math.sin(a2) * d2, random(TWO_PI), R * random(0.3, 0.6), 12, 0.2);
+        wash(55, 0.04, 0.5, 0.4);
+        brush.polygon(ribbon(path, R * 0.03, 1.5));
+      }
+    }
+
+    function setup() {
+      createCanvas(W, H, WEBGL);
+      pixelDensity(1);
+      randomSeed(SEED);
+      noiseSeed(SEED);
+      background(255);
+      brush.noStroke();
+      for (var i = 0; i < ASTROCYTES + NEUROPIL; i++) {
+        var cx = (i % COLS + 0.5) * CELL;
+        var cy = (Math.floor(i / COLS) + 0.5) * CELL;
+        if (i < ASTROCYTES) astrocyte(cx, cy);
+        else neuropil(cx, cy);
+      }
+    }
+
+    // p5.brush composites the painting when setup() returns.
+    function draw() {
+      noLoop();
+      loadPixels();
+      var d = pixelDensity();
+      var out = document.createElement("canvas");
+      out.width = W;
+      out.height = H;
+      var ctx = out.getContext("2d");
+      var img = ctx.createImageData(W, H);
+      for (var c = 0; c < ASTROCYTES + NEUROPIL; c++) {
+        var ox = (c % COLS) * CELL;
+        var oy = Math.floor(c / COLS) * CELL;
+        var max = 0;
+        var x, y, k, v;
+        for (y = 0; y < CELL; y++) {
+          for (x = 0; x < CELL; x++) {
+            k = 4 * ((oy + y) * d * W * d + (ox + x) * d);
+            v = 1 - (pixels[k] + pixels[k + 1] + pixels[k + 2]) / 765;
+            if (v > max) max = v;
+          }
+        }
+        for (y = 0; y < CELL; y++) {
+          for (x = 0; x < CELL; x++) {
+            k = 4 * ((oy + y) * d * W * d + (ox + x) * d);
+            v = (1 - (pixels[k] + pixels[k + 1] + pixels[k + 2]) / 765) / (max || 1);
+            var o = 4 * ((oy + y) * W + ox + x);
+            img.data[o] = img.data[o + 1] = img.data[o + 2] = 255;
+            img.data[o + 3] = Math.round(255 * Math.pow(Math.min(1, v), 0.85));
+          }
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      var url = out.toDataURL("image/webp", 0.9);
+      window.atlasDataURL = url;
+
+      var preview = document.createElement("img");
+      preview.src = url;
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = "astrocytes.webp";
+      link.textContent = "Download astrocytes.webp";
+      document.getElementById("status").replaceChildren(link);
+      document.body.appendChild(preview);
+    }
+  </script>
+</body>
+</html>
