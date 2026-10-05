@@ -27,17 +27,18 @@
   var BG = "#14213d";             // --prussian-blue
   var REST = "#e5e5e5";           // --alabaster-grey
   var ACTIVE = "#fca311";         // --orange
-  var REST_ALPHA = 0.45;
-  var NEUROPIL_ALPHA = 0.16;
+  var REST_ALPHA = 0.42;
+  var NEUROPIL_ALPHA = 0.1;
 
-  var SPACING = 150;              // px between astrocyte centres
-  var SPRITE = 1.6;               // sprite size, in units of SPACING
+  var SPACING = 170;              // px between astrocyte centres
+  var SPRITE = 1.3;               // sprite size, in units of SPACING
+  var STAGGER = 0.2;              // vertical offset of alternate cells, in units of SPACING
   var NEUROPIL_SPACING = 110;     // px
   var BASAL_RATE = 0.03;          // events / s / cell
   var WAVE_RATE = 0.05;           // spontaneous waves / s per 100,000 px^2
   var WAVE_SPEED = 120;           // px / s
   var WAVE_LAMBDA = 220;          // px, length constant of recruitment
-  var STIM_RATE = 1.5;            // peak events / s under the pointer
+  var STIM_RATE = 3;              // peak events / s under the pointer
   var STIM_SIGMA = 70;            // px
   var EVOKED_LAMBDA = 180;        // px, recruitment by a click / tap wave
   var EVOKED_EVENTS = 1.5;        // calcium per recruited cell
@@ -125,17 +126,19 @@
       var w = p.width;
       var h = p.height;
       var rowStep = SPACING * 0.87;
-      var rows = Math.floor(h / rowStep) + 1;
+      var rows = Math.max(1, Math.round(h / rowStep));
       var y0 = (h - (rows - 1) * rowStep) / 2;
-      var r, x, y;
+      var r, i, x, y;
 
+      // Staggered rows, extending past the edges so cells are cropped by the
+      // field of view rather than missing from it.
       cells = [];
       pending = [];
       for (r = 0; r < rows; r++) {
-        for (x = (r % 2 ? 0 : SPACING / 2) - SPACING / 2; x < w + SPACING; x += SPACING) {
+        for (i = 0, x = (r % 2 ? SPACING / 2 : 0); x < w + SPACING / 2; i++, x += SPACING) {
           cells.push({
-            x: x + p.random(-0.12, 0.12) * SPACING,
-            y: y0 + r * rowStep + p.random(-0.12, 0.12) * SPACING,
+            x: x + p.random(-0.08, 0.08) * SPACING,
+            y: y0 + r * rowStep + (i % 2 ? 1 : -1) * STAGGER * SPACING + p.random(-0.05, 0.05) * SPACING,
             sprite: Math.floor(p.random(ASTROCYTES)),
             rot: p.random(p.TWO_PI),
             flip: p.random() < 0.5 ? -1 : 1,
