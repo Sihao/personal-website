@@ -33,9 +33,10 @@
   var STRETCH_F = [0.9, 1.1];     // range of frequency stretch
 
   var BG = "#ffffff";
-  // Colour and opacity of each layer of a mouse, all dark grey: the
-  // silhouette, darker pools, whiskers and dust, and lighter blooms.
-  var LAYER_TINTS = [["#3b3b3d", 0.85], ["#1f1f21", 0.45], ["#2b2b2d", 0.9], ["#8a8a8c", 0.3]];
+  // Colour, opacity and number of passes of each layer of a mouse, all
+  // dark grey: the silhouette (laid twice, as its pigment is thin), darker
+  // pools, whiskers and dust, and lighter blooms.
+  var LAYER_TINTS = [["#2f2f31", 1, 2], ["#151517", 0.5, 1], ["#202022", 0.9, 1], ["#6a6a6c", 0.3, 1]];
   // Inks of the syllables, with their weights: Prussian blue, and a tint of
   // it towards alabaster.
   var USV_INKS = [["#14213d", 3], ["#4d5874", 2]];
@@ -253,7 +254,9 @@
           sctx.globalCompositeOperation = "source-in";
           sctx.fillStyle = LAYER_TINTS[l][0];
           sctx.fillRect(0, 0, tile.w, tile.h);
-          drawMouse(ctx, scratch, m, { x: 0, y: 0, w: tile.w, h: tile.h }, LAYER_TINTS[l][1]);
+          for (var pass = 0; pass < LAYER_TINTS[l][2]; pass++) {
+            drawMouse(ctx, scratch, m, { x: 0, y: 0, w: tile.w, h: tile.h }, LAYER_TINTS[l][1]);
+          }
         }
       });
     }
