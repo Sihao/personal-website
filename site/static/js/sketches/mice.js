@@ -281,8 +281,12 @@
     // The background and the mice, each layer tinted through one scratch
     // tile.
     function drawRestLayer() {
-      if (!restLayer) restLayer = p.createGraphics(p.width, p.height);
-      else restLayer.resizeCanvas(p.width, p.height);
+      if (!restLayer) {
+        restLayer = p.createGraphics(p.width, p.height);
+        restLayer.elt.setAttribute("aria-hidden", "true");
+      } else {
+        restLayer.resizeCanvas(p.width, p.height);
+      }
       var ctx = restLayer.drawingContext;
       var scratch = canvas(MOUSE_W, MOUSE_H);
       var sctx = scratch.getContext("2d");

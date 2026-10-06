@@ -6,7 +6,7 @@ journal: "The Journal of Physiology 601(18): 4091–4104"
 doi: "10.1113/JP285003"
 preprint: "10.1101/2021.10.13.464267"
 sketch: mice
-sketchLabel: "Ink painting of two mice, one calling and one listening. Hovering over a mouse shows ultrasonic vocalisation syllables around it."
+sketchLabel: "Ink painting of two abstract dark-grey mice, one at the top and one at the bottom, facing opposite ways. Hovering over or tapping a mouse makes it call: ultrasonic vocalisation syllables, drawn as spectrogram contours, travel along a winding path to the other mouse's ear."
 ---
 
 <!-- To do: the story behind the paper, and my contribution. -->

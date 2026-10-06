@@ -285,8 +285,12 @@
     // The resting composition. Each sprite is tinted through one scratch
     // tile, so no tinted copy of the whole atlas is kept per colour.
     function drawRestLayer() {
-      if (!restLayer) restLayer = p.createGraphics(p.width, p.height);
-      else restLayer.resizeCanvas(p.width, p.height);
+      if (!restLayer) {
+        restLayer = p.createGraphics(p.width, p.height);
+        restLayer.elt.setAttribute("aria-hidden", "true");
+      } else {
+        restLayer.resizeCanvas(p.width, p.height);
+      }
       var ctx = restLayer.drawingContext;
       var scratch = canvas(TILE, TILE);
       var sctx = scratch.getContext("2d");
