@@ -49,6 +49,17 @@
   margin: 0px;
 }
 
+/* Publication cards on the landing page: white, outlined in Prussian
+   blue, with a small mouse from the publication's painting in the
+   bottom right corner (site/static/img/mouse-card.webp, rendered by
+   tools/mouse-card.html). */
+.publication-card {
+  border: 2px solid var(--prussian-blue);
+  padding-right: 6rem;
+  padding-bottom: 2.5rem;
+  background: var(--white) url(/img/mouse-card.webp) no-repeat right 0.75rem bottom 0.75rem / 80px auto;
+}
+
 /* Publication pages: the painting is a tall, narrow scroll beside the
    text on wider screens, and a short band above it on phones. */
 .publication-sketch { height: 220px; }

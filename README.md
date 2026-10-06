@@ -64,3 +64,5 @@ Publication pages use the same approach. The two mice on the page for *Composite
 ## Publication pages
 
 Each publication is a Markdown file in `site/content/publications/`, rendered by `site/layouts/publications/single.html`: a narrow column with a sketch (front matter `sketch` and `sketchLabel`) beside the text. On phones, the sketch is a short band above the text. The front matter also holds `authors` (Markdown), `journal`, `doi` and `preprint` (a DOI). Pages marked `draft: true` appear in Netlify deploy previews but not on the live site.
+
+The landing page lists the latest four publications as cards (`site/layouts/publications/li.html`): white, outlined in Prussian blue, with a small mouse from the painting in the corner. The mouse is `site/static/img/mouse-card.webp`; after repainting `mice.webp` or changing its tints in `mice.js`, regenerate it with `tools/mouse-card.html` (serve the repository root over HTTP and open the tool).

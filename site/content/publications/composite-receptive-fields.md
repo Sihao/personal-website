@@ -1,7 +1,6 @@
 ---
 title: "Composite receptive fields in the mouse auditory cortex"
 date: 2023-08-14
-draft: true
 authors: "**Sihao Lu**, Grace W.Y. Ang, Mark Steadman, Andriy S. Kozlov"
 journal: "The Journal of Physiology 601(18): 4091–4104"
 doi: "10.1113/JP285003"
