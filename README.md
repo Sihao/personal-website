@@ -69,4 +69,4 @@ The landing page lists the latest six publications as cards, three per row on wi
 
 ## Alt text
 
-Every image takes its alt text from its content: `image1.alt` and so on in the image grid, `alt` for the items of the 2-up and 4-up blocks, `imageAlt` for the media and text-and-image blocks, `logo_alt` and `full_image_alt` in section front matter, and `sketchLabel` for a publication's sketch (or `label` in the `p5-sketch` partial and `p5` shortcode). Leave it empty only for a purely decorative image. Icon links carry an `aria-label` and hide their SVG from screen readers.
+Every image takes its alt text from its content: `image1.alt` and so on in the image grid, `alt` for the items of the 2-up and 4-up blocks, `imageAlt` for the media and text-and-image blocks, `logo_alt` and `full_image_alt` in section front matter, and `sketchLabel` for a publication's sketch (or `label` in the `p5-sketch` partial and `p5` shortcode). Keep it short: say what the image is, not what it looks like in detail, as screen readers read it in full every time. Leave it empty only for a purely decorative image. Icon links carry an `aria-label` and hide their SVG from screen readers.
