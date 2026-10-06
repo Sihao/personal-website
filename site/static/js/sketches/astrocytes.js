@@ -46,8 +46,8 @@
   var DOMAIN_GAIN = 1.8;          // and so does this
   var FEATHER = { soma: 5, process: 5, domain: 8 };  // atlas px of soft border
 
-  var SPACING = 170;              // px between astrocyte centres
-  var SPRITE = 1.3;               // sprite size, in units of SPACING
+  var SPACING = 160;              // px between astrocyte centres
+  var SPRITE = 1.0;               // sprite size, in units of SPACING
   var STAGGER = 0.2;              // vertical offset of alternate cells, in units of SPACING
   var NEUROPIL_SPACING = 110;     // px
 

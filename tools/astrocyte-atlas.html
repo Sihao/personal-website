@@ -9,20 +9,16 @@
                             100-255 = microdomains, 0 = nothing
   Save both to site/static/img/.
 
-  Each astrocyte has three layers, painted in two passes:
-    - Fine processes: thin, grainy p5.brush pencil strokes that branch out
-      from the soma and from the trunks, as in Golgi-stained astrocytes.
-      Painted first, on their own, so their density can be read separately.
-    - The body: soma and thick processes as one continuous shape, a single
-      smooth distance field (tapered capsules joined with a smooth minimum).
-      p5.brush paints its traced outline as two watercolor glazes, so there
-      are no internal edges where branches meet; the interior is then given
-      pigment pooling, paper grain and depth shading.
-    - The haze: spongy, speckled noise for the finest processes, as in
-      two-photon images, under an envelope around the cell.
-  The fine processes and haze are split into microdomains of roughly equal
-  size so that each can light up on its own. Neuropil tiles have only stray
-  fine processes and haze.
+  Each astrocyte is one continuous shape: its soma and processes are a single
+  smooth distance field (tapered capsules joined with a smooth minimum), and
+  p5.brush paints its traced outline as a few translucent watercolor glazes.
+  The glazes keep p5.brush's fill texture, bleed and darkened edges; because
+  they share one outline, their edges lie only along the cell's boundary,
+  never across it. The cloud of fine processes around
+  them, and the patches of neuropil between cells, are soft noise rather than
+  brush washes: in two-photon images that tissue is a diffuse haze, not a set
+  of discs. The haze is split into microdomains of roughly equal size so that
+  each can light up on its own.
 
   Painting is seeded, so the same SEED gives the same atlas.
 -->
@@ -53,17 +49,19 @@
 
     var SEED = 7;
     var DOMAIN_SPACING = 34;      // px between microdomain centres
-    var CLOUD_LEVEL = 0.55;       // density of the haze relative to the body
+    var CLOUD_LEVEL = 0.4;        // density of the haze relative to the processes
     var NEUROPIL_LEVEL = 0.55;
-    var TWIG_LEVEL = 0.55;        // density of the fine processes relative to the body
 
     var W = COLS * CELL;
     var H = Math.ceil((ASTROCYTES + NEUROPIL) / COLS) * CELL;
     var R = CELL / 2;
 
-    var JOIN_RADIUS = 10;              // px, smooth-minimum radius where branches join
-    var fields = [];              // per astrocyte tile: {sdf, owner, outline}
-    var twigs = [];               // per tile: density of the fine processes
+    var JOIN_RADIUS = 10;         // px, smooth-minimum radius where branches join
+    // Body glazes: [opacity, bleed, texture, darkened edge]. A wide, faint
+    // glaze that bleeds furthest, then stronger ones inside it.
+    var GLAZES = [[40, 0.24, 0.55, 0.3], [45, 0.14, 0.6, 0.25], [55, 0.07, 0.5, 0.2]];
+    var BLEED = 6;                // px of bleed kept outside the outline
+    var fields = [];              // per astrocyte tile: {sdf, owner}
     var nextProcess = PROCESS0;
 
     // Atlas pixel coordinates -> WEBGL coordinates (origin at the centre).
@@ -141,63 +139,8 @@
       }
     }
 
-    // One fine process from (x, y), tile px, with heading a: a long, wavy
-    // pencil line that thins out, with at most one side twig fanning outward.
-    function twig(ox, oy, x, y, a, length, weight, depth) {
-      var steps = Math.max(3, Math.round(length / 5));
-      var path = wander(x, y, a, length, steps, 0.12);
-      brush.set(depth === 0 ? "2B" : "HB", "#000000", weight);
-      brush.spline(path.map(function (q, i) {
-        return P([ox + q[0], oy + q[1]]).concat([1 - 0.7 * i / steps]);
-      }), 0.5);
-      if (depth >= 1 || random() < 0.5) return;
-      var j = floor(random(0.3, 0.7) * steps);
-      twig(ox, oy, path[j][0], path[j][1],
-        heading(path, j) + (random() < 0.5 ? -1 : 1) * random(0.3, 0.6),
-        length * random(0.4, 0.7), weight * 0.7, depth + 1);
-    }
-
-    // Fine processes along the distal part of each branch, from its tip, and
-    // radiating from the soma between the trunks. Each starts at the edge of
-    // the body, never inside it.
-    function fineProcesses(ox, oy, branches, somaR) {
-      branches.forEach(function (b) {
-        var segs = b.segs;
-        for (var j = Math.round(segs.length * 0.3); j < segs.length; j += 3) {
-          var s = segs[j];
-          var h = Math.atan2(s.by - s.ay, s.bx - s.ax);
-          var side = random() < 0.5 ? -1 : 1;
-          var x = s.ax + Math.cos(h + side * Math.PI / 2) * (s.ra + 1);
-          var y = s.ay + Math.sin(h + side * Math.PI / 2) * (s.ra + 1);
-          twig(ox, oy, x, y, h + side * random(0.4, 0.9), R * random(0.18, 0.4), random(0.6, 1), 0);
-        }
-        var tip = segs[segs.length - 1];
-        var th = Math.atan2(tip.by - tip.ay, tip.bx - tip.ax);
-        for (var t = floor(random(2, 4)); t > 0; t--) {
-          twig(ox, oy, tip.bx, tip.by, th + random(-0.5, 0.5), R * random(0.25, 0.45), random(0.6, 0.9), 0);
-        }
-      });
-      for (var k = floor(random(12, 18)); k > 0; k--) {
-        var a = random(TWO_PI);
-        twig(ox, oy, R + Math.cos(a) * (somaR + 1), R + Math.sin(a) * (somaR + 1),
-          a + random(-0.3, 0.3), R * random(0.3, 0.65), random(0.7, 1.1), 0);
-      }
-    }
-
-    // Stray fine processes of cells outside the field of view.
-    function neuropil(cell) {
-      var ox = (cell % COLS) * CELL;
-      var oy = Math.floor(cell / COLS) * CELL;
-      for (var k = 0; k < 30; k++) {
-        var a = random(TWO_PI);
-        var d = R * Math.sqrt(random()) * 0.7;
-        twig(ox, oy, R + Math.cos(a) * d, R + Math.sin(a) * d, random(TWO_PI),
-          R * random(0.1, 0.25), random(0.6, 1), 1);
-      }
-    }
-
-    // Builds one astrocyte as a distance field over its tile and paints its
-    // fine processes. The body is painted later, in its own pass.
+    // Builds one astrocyte as a distance field over its tile, then paints
+    // the outline of the field's interior as a single wash.
     function astrocyte(cell) {
       var ox = (cell % COLS) * CELL;
       var oy = Math.floor(cell / COLS) * CELL;
@@ -208,10 +151,10 @@
       for (var i = 0; i < n; i++) {
         var a = a0 + (i / n) * TWO_PI + random(-0.35, 0.35);
         process(branches, R + Math.cos(a) * R * 0.05, R + Math.sin(a) * R * 0.05, a,
-          R * random(0.45, 0.8), R * random(0.11, 0.15), 0,
+          R * random(0.45, 0.75), R * random(0.1, 0.14), 0,
           Math.min(DOMAIN0 - 1, nextProcess++));
       }
-      var somaR = R * 0.15;
+      var somaR = R * 0.14;
       var phase = random(1000);
 
       // Distance field; owner[] is the compartment nearest each pixel.
@@ -239,27 +182,16 @@
           owner[y * CELL + x] = label;
         }
       }
-      var outline = smoothLoop(traceOutline(sdf), 3).filter(function (q, i) { return i % 2 === 0; });
-      fields[cell] = { sdf: sdf, owner: owner, outline: outline };
-      fineProcesses(ox, oy, branches, somaR);
-    }
+      fields[cell] = { sdf: sdf, owner: owner };
 
-    // The body as two glazes over the same outline: a wide, faint one whose
-    // bleed gives the soft outer bloom, and a stronger one inside it. Their
-    // edges lie along the outline only, never across the cell.
-    function paintBody(cell) {
-      var ox = (cell % COLS) * CELL;
-      var oy = Math.floor(cell / COLS) * CELL;
-      var pts = fields[cell].outline.map(function (q) { return P([ox + q[0], oy + q[1]]); });
-      brush.noStroke();
-      brush.fill(0, 0, 0, 45);
-      brush.fillBleed(0.1, "out");
-      brush.fillTexture(0, 0.3, false);
-      brush.polygon(pts);
-      brush.fill(0, 0, 0, 110);
-      brush.fillBleed(0.05, "out");
-      brush.fillTexture(0, 0.12, false);
-      brush.polygon(pts);
+      var outline = smoothLoop(traceOutline(sdf), 3).filter(function (q, i) { return i % 2 === 0; });
+      var pts = outline.map(function (q) { return P([ox + q[0], oy + q[1]]); });
+      GLAZES.forEach(function (g) {
+        brush.fill(0, 0, 0, g[0]);
+        brush.fillBleed(g[1], "out");
+        brush.fillTexture(g[2], g[3], true);
+        brush.polygon(pts);
+      });
     }
 
     // Outer boundary of {sdf < 0} by Moore-neighbour tracing, as pixel centres.
@@ -371,66 +303,41 @@
         }
       }
 
-      // The body, relative to the glaze's typical density, so that its
-      // darkened wet edge and outer bloom keep their shape. p5.brush can
-      // leave parts of a long concave outline unfilled; those gaps are filled
-      // from the field. Inside, the pigment pools in broad patches, picks up
-      // the grain of the paper, and is deeper where the tissue is thicker.
-      // All of this varies smoothly, so the interior has no edges.
+      // The cell's interior, labelled by its nearest compartment, and a
+      // gentle shading by depth so that the soma and thick trunks read as
+      // thicker tissue. Depth comes from one continuous field, so the shading
+      // has no seams where branches meet.
       var F = fields[cell];
-      var B = new Float32Array(n);
       if (F) {
+        // p5.brush can leave parts of a long concave outline unfilled; give
+        // any gaps a faint floor from the field. Outside the outline, keep
+        // only the bleed: p5.brush also bridges concave outlines with flat,
+        // straight-edged wedges.
         var inner = [];
         for (i = 0; i < n; i++) if (F.sdf[i] < -2) inner.push(S[i]);
         inner.sort(function (a, b) { return a - b; });
-        var typical = inner[inner.length >> 1] || 1;
-        var pool = random(1000);
-        for (y = 0; y < CELL; y++) {
-          for (x = 0; x < CELL; x++) {
-            i = y * CELL + x;
-            // Outside the outline, keep only the bleed: p5.brush bridges
-            // concave parts of the outline with straight-edged wedges.
-            B[i] = Math.min(1.05, Math.max(S[i], typical * ramp(1, -1, F.sdf[i])) / typical) *
-              ramp(4, 0, F.sdf[i]);
-            if (F.sdf[i] < 0) {
-              M[i] = 1;
-              L[i] = F.owner[i];
-            }
+        var typical = inner[inner.length >> 1] || 0;
+        for (i = 0; i < n; i++) {
+          S[i] = Math.max(S[i], 0.6 * typical * ramp(1, -1, F.sdf[i])) * ramp(BLEED, 1, F.sdf[i]);
+          if (F.sdf[i] < 0) {
+            M[i] = 1;
+            L[i] = F.owner[i];
           }
+          var depth = Math.max(0, -F.sdf[i]) / (R * 0.14);
+          S[i] *= 0.6 + 0.4 * Math.pow(Math.min(1, depth), 0.6);
         }
-        B = boxBlur(B, 1);
-        var bmax = 0;
-        for (y = 0; y < CELL; y++) {
-          for (x = 0; x < CELL; x++) {
-            i = y * CELL + x;
-            var depth = Math.min(1, Math.max(0, -F.sdf[i]) / (R * 0.15));
-            var inside = ramp(0, -3, F.sdf[i]);
-            var paint = (0.72 + 0.28 * Math.pow(depth, 0.6)) *
-              (0.75 + 0.5 * fbm(x + pool, y, 0.03)) *
-              (0.88 + 0.24 * fbm(x, y + pool, 0.5));
-            B[i] *= 1 - inside + inside * paint;
-            bmax = Math.max(bmax, B[i]);
-          }
-        }
-        for (i = 0; i < n; i++) B[i] /= bmax || 1;
       }
 
       // The haze: fractal noise under an envelope. Around an astrocyte the
       // envelope follows its processes; in neuropil it is a few soft patches.
       var E;
       var level;
-      if (F) {
-        E = boxBlur(M, 16);
+      if (L.some(function (v) { return v > 0; })) {
+        E = boxBlur(M, 10);
         var emax = 0;
         for (i = 0; i < n; i++) emax = Math.max(emax, E[i]);
         level = CLOUD_LEVEL;
-        for (y = 0; y < CELL; y++) {
-          for (x = 0; x < CELL; x++) {
-            i = y * CELL + x;
-            var territory = 0.7 * ramp(R * 0.85, R * 0.3, Math.hypot(x - R, y - R));
-            E[i] = Math.max(Math.pow(E[i] / emax, 0.5), territory);
-          }
-        }
+        for (i = 0; i < n; i++) E[i] = Math.pow(E[i] / emax, 0.5);
       } else {
         E = new Float32Array(n);
         var patches = floor(random(8, 12));
@@ -456,25 +363,25 @@
           i = y * CELL + x;
           var r = Math.hypot(x - R, y - R);
           var edge = ramp(R * 0.98, R * 0.7, r);
-          // Spongy: a fine reticulum of noise, broken up by larger lumps and
-          // flecked with specks.
-          var sponge = ramp(0.36, 0.7, fbm(x + phase, y, 0.16));
-          var lumps = 0.6 + 0.5 * ramp(0.3, 0.7, fbm(x, y + phase, 0.03));
-          var speck = ramp(0.6, 0.8, fbm(x + phase, y + phase, 0.45));
-          C[i] = E[i] * edge * Math.min(1, (0.75 * sponge + 0.5 * speck) * lumps) * level;
+          var lumps = ramp(0.3, 0.75, fbm(x + phase, y, 0.035));
+          var grain = 0.75 + 0.5 * fbm(x, y + phase, 0.3);
+          C[i] = E[i] * edge * lumps * grain * level;
         }
       }
 
-      // Combine and write the density tile. Each layer shows only where it
-      // is denser than the others, so neither haze nor fine processes texture
-      // the body's interior.
-      var T = twigs[cell];
+      // Combine and write the density tile. The cell is normalised on its
+      // own so that it is the brightest thing in the tile, and the haze only
+      // shows where it is denser than the cell, so it never textures the
+      // cell's interior.
       var D = new Float32Array(n);
+      var smax = 0;
       var cmax = 0;
-      for (i = 0; i < n; i++) cmax = Math.max(cmax, C[i]);
       for (i = 0; i < n; i++) {
-        var fine = TWIG_LEVEL * Math.min(1, 1.3 * T[i]);
-        D[i] = Math.max(F ? B[i] : 0, fine, F ? C[i] : C[i] / (cmax || 1));
+        smax = Math.max(smax, S[i]);
+        cmax = Math.max(cmax, C[i]);
+      }
+      for (i = 0; i < n; i++) {
+        D[i] = F ? Math.max(S[i] / (smax || 1), C[i]) : C[i] / (cmax || 1);
       }
 
       // Grow the structure labels a few pixels into the watercolor bleed.
@@ -483,7 +390,7 @@
         for (y = 1; y < CELL - 1; y++) {
           for (x = 1; x < CELL - 1; x++) {
             i = y * CELL + x;
-            if (L[i] || B[i] < 0.1) continue;
+            if (L[i] || S[i] < 0.03) continue;
             next[i] = L[i - 1] || L[i + 1] || L[i - CELL] || L[i + CELL];
           }
         }
@@ -496,8 +403,7 @@
       for (k = 0; k < 6000 && seeds.length < 255 - DOMAIN0; k++) {
         var sx = random(CELL);
         var sy = random(CELL);
-        var si = floor(sy) * CELL + floor(sx);
-        if (Math.max(C[si], T[si]) < 0.08 * level || M[si]) continue;
+        if (C[floor(sy) * CELL + floor(sx)] < 0.08 * level) continue;
         if (seeds.every(function (q) { return Math.hypot(q[0] - sx, q[1] - sy) > DOMAIN_SPACING; })) {
           seeds.push([sx, sy]);
         }
@@ -536,26 +442,8 @@
       noiseSeed(SEED);
       noiseDetail(4, 0.5);
       background(255);
-      brush.noField();
-      for (var i = 0; i < ASTROCYTES + NEUROPIL; i++) {
-        if (i < ASTROCYTES) astrocyte(i);
-        else neuropil(i);
-      }
-    }
-
-    // Pigment density of the current frame in one tile, 0-1.
-    function readTile(cell) {
-      var ox = (cell % COLS) * CELL;
-      var oy = Math.floor(cell / COLS) * CELL;
-      var d = pixelDensity();
-      var out = new Float32Array(CELL * CELL);
-      for (var y = 0; y < CELL; y++) {
-        for (var x = 0; x < CELL; x++) {
-          var k = 4 * ((oy + y) * d * W * d + (ox + x) * d);
-          out[y * CELL + x] = 1 - (pixels[k] + pixels[k + 1] + pixels[k + 2]) / 765;
-        }
-      }
-      return out;
+      brush.noStroke();
+      for (var i = 0; i < ASTROCYTES; i++) astrocyte(i);
     }
 
     function exported(canvas, type, name, quality) {
@@ -568,18 +456,10 @@
       return url;
     }
 
-    // p5.brush composites its work when setup() and each draw() return.
-    // Frame 1: read the fine processes painted in setup(), clear, and paint
-    // the bodies. Frame 2: read the bodies and build the atlas.
+    // p5.brush composites the painting when setup() returns.
     function draw() {
-      loadPixels();
-      if (frameCount === 1) {
-        for (var t = 0; t < ASTROCYTES + NEUROPIL; t++) twigs[t] = readTile(t);
-        background(255);
-        for (t = 0; t < ASTROCYTES; t++) paintBody(t);
-        return;
-      }
       noLoop();
+      loadPixels();
       function canvas2d() {
         var c = document.createElement("canvas");
         c.width = W;
