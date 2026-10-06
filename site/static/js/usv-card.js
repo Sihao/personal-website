@@ -109,6 +109,7 @@
     var syllables = [];
     var next = 0;
     var running = false;
+    var raf = 0;                  // the pending animation frame
     var last = 0;
     var t = 0;
 
@@ -143,7 +144,7 @@
         var f = (t - s.born) / TRAVEL;
         draw(f, s, ALPHA * Math.min(1, f / 0.08) * Math.min(1, (1 - f) / 0.2));
       });
-      requestAnimationFrame(frame);
+      raf = requestAnimationFrame(frame);
     }
 
     if (reducedMotion) {
@@ -160,13 +161,19 @@
       if (running) return;
       running = true;
       last = 0;
-      requestAnimationFrame(frame);
+      raf = requestAnimationFrame(frame);
+    }
+    // Cancels the pending frame, so a card that leaves view and comes
+    // straight back runs one loop, not two.
+    function stop() {
+      running = false;
+      cancelAnimationFrame(raf);
     }
     if ("IntersectionObserver" in window) {
       new IntersectionObserver(function (entries) {
         entries.forEach(function (e) {
           if (e.isIntersecting) start();
-          else running = false;
+          else stop();
         });
       }).observe(canvas);
     } else {
