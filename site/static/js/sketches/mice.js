@@ -1,8 +1,9 @@
 // Two mice on white, in the manner of an ink painting: one calls, the other
-// listens. Hovering over a mouse (or tapping it) makes it vocalise:
-// bouts of ultrasonic vocalisation syllables appear around it, alternately
-// above and below, as rows of spectrogram contours (time along x,
-// frequency up) written out left to right, which drift away and fade.
+// listens. Hovering over a mouse (or tapping it) makes it vocalise: bouts
+// of ultrasonic vocalisation syllables, as spectrogram contours (time
+// along x, frequency up), leave its snout and travel along a curve to the
+// other mouse's ear, fading as they arrive. Each syllable is written out
+// left to right as it leaves.
 //
 // In a tall frame the mice are stacked, facing opposite ways and a little
 // askew; in a wide frame they face each other across the middle.
@@ -35,18 +36,26 @@
   // the body (so a white mouse still reads on white), ink wash, ink line,
   // and a lighter grey over the ink for the ears, eye ring and cheek.
   var LAYER_TINTS = [["#b9b1a4", 0.5], ["#1f1a14", 0.9], ["#14110d", 0.95], ["#d2cbc0", 0.75]];
-  var USV_INK = "#14213d";        // --prussian-blue
-  var USV_ALPHA = 0.85;
+  // Inks of the syllables, with their weights: Prussian blue, and a tint of
+  // it towards alabaster.
+  var USV_INKS = [["#14213d", 3], ["#4d5874", 2]];
+  var USV_ALPHA = 0.8;
 
   var TALL = 1.4;                 // height / width above which the mice are stacked
   var TAP_HOLD = 2.5;             // s a tapped mouse keeps calling
-  var BOUT_GAP = [0.5, 0.9];      // s of silence between bouts
-  var SYL_INTERVAL = [0.1, 0.16]; // s between syllable onsets in a bout
-  var SYL_SPACING = [0.85, 1.15]; // syllable pitch along a row, in syllable sizes
+  var BOUT = [3, 6];              // syllables in a bout
+  var BOUT_GAP = [0.6, 1.0];      // s of silence between bouts
+  var SYL_INTERVAL = [0.28, 0.42]; // s between syllable onsets in a bout
   var SYL_SIZE = 0.3;             // syllable size, as a fraction of mouse width
-  var LIFE = 2.2;                 // s a syllable lasts
+  var TRAVEL = 2.6;               // s for a syllable to reach the other mouse
+  var SPREAD = 0.35;              // sideways scatter off the path, in syllable sizes
+  var LIFE = 2.2;                 // s a syllable lasts when it does not move (reduced motion)
   var WRITE = 0.12;               // s to write a syllable out, left to right
-  var DRIFT = 14;                 // px a row drifts away from the mouse
+
+  // Where a syllable leaves and arrives, in tile fractions (the mouse
+  // faces left in its tile): just in front of the snout, and the near ear.
+  var SNOUT = { u: 0.04, v: 0.68 };
+  var EAR = { u: 0.25, v: 0.3 };
 
   // The mouse in its tile, for hit testing: an ellipse round body and ears,
   // in tile fractions (the mouse faces left in the tile).
@@ -113,14 +122,16 @@
 
   window.p5Sketches.mice = function (p, opts) {
     var el = opts.el;
-    var mice = [];                // {x, y, w, rot, flip, tile, holdUntil, nextBout, side}
-    var syllables = [];           // {x, y, dy, size, sx, sy, tile, born}
+    var mice = [];                // {x, y, w, rot, flip, tile, holdUntil, nextBout}
+    var syllables = [];           // {path, size, sx, sy, off, travel, still, tile, ink, born}
     var t = 0;
     var pointer = null;           // {x, y} while the pointer is over the frame
     var hovered = -1;
     var atlas = null;
-    var inkAtlas = null;
+    var inkAtlases = [];
     var restLayer = null;
+    var paths = [];               // [caller -> listener, listener -> caller]
+    var bow = 0;                  // px, how far the paths arch upwards
 
     // Places the mice for the frame's shape.
     function layout() {
@@ -132,20 +143,70 @@
           { x: w / 2, y: h * 0.3, w: mw, rot: -0.07, flip: 1 },
           { x: w / 2, y: h * 0.7, w: mw, rot: -0.1, flip: -1 }
         ];
+        bow = 0;
       } else {
         var mw2 = Math.min(w * 0.4, h * 1.1);
         mice = [
           { x: w * 0.72, y: h * 0.48, w: mw2, rot: 0.08, flip: 1 },
           { x: w * 0.28, y: h * 0.55, w: mw2, rot: -0.1, flip: -1 }
         ];
+        // Face to face, the paths arch over the gap between the mice.
+        bow = -0.45 * h;
       }
       mice.forEach(function (m, i) {
         m.tile = i;
         m.holdUntil = -1;
         m.nextBout = 0;
-        m.side = 1;
       });
       syllables = [];
+      paths = [path(0, 1), path(1, 0)];
+    }
+
+    // Tile fractions of mouse m -> frame coordinates.
+    function fromTile(m, u, v) {
+      var mh = m.w * MOUSE_H / MOUSE_W;
+      var lx = (u - 0.5) * m.w * m.flip, ly = (v - 0.5) * mh;
+      var c = Math.cos(m.rot), s = Math.sin(m.rot);
+      return { x: m.x + lx * c - ly * s, y: m.y + lx * s + ly * c };
+    }
+
+    // Unit vector the way mouse m faces.
+    function facing(m) {
+      return { x: -m.flip * Math.cos(m.rot), y: -m.flip * Math.sin(m.rot) };
+    }
+
+    // A cubic Bezier from the snout of mouse a to the ear of mouse b. It
+    // leaves the snout in the direction a faces and comes into the ear
+    // from in front of b's head; control points stay inside the frame.
+    function path(a, b) {
+      var ma = mice[a], mb = mice[b];
+      var p0 = fromTile(ma, SNOUT.u, SNOUT.v);
+      var p3 = fromTile(mb, EAR.u, EAR.v);
+      var fa = facing(ma), fb = facing(mb);
+      var len = Math.hypot(p3.x - p0.x, p3.y - p0.y);
+      var margin = ma.w * SYL_SIZE * 0.6;
+      function inside(q) {
+        return {
+          x: Math.min(p.width - margin, Math.max(margin, q.x)),
+          y: Math.min(p.height - margin, Math.max(margin, q.y))
+        };
+      }
+      return [p0,
+        inside({ x: p0.x + fa.x * len * 0.45, y: p0.y + fa.y * len * 0.45 + bow }),
+        inside({ x: p3.x + fb.x * len * 0.45, y: p3.y + fb.y * len * 0.45 + bow }),
+        p3];
+    }
+
+    // Point and unit normal on a path at q in 0..1.
+    function along(c, q) {
+      var r = 1 - q;
+      var a = r * r * r, b = 3 * r * r * q, d = 3 * r * q * q, e = q * q * q;
+      var x = a * c[0].x + b * c[1].x + d * c[2].x + e * c[3].x;
+      var y = a * c[0].y + b * c[1].y + d * c[2].y + e * c[3].y;
+      var tx = 3 * r * r * (c[1].x - c[0].x) + 6 * r * q * (c[2].x - c[1].x) + 3 * q * q * (c[3].x - c[2].x);
+      var ty = 3 * r * r * (c[1].y - c[0].y) + 6 * r * q * (c[2].y - c[1].y) + 3 * q * q * (c[3].y - c[2].y);
+      var len = Math.hypot(tx, ty) || 1;
+      return { x: x, y: y, nx: -ty / len, ny: tx / len };
     }
 
     // Frame coordinates -> tile fractions of mouse m (the mouse faces left
@@ -202,55 +263,46 @@
       });
     }
 
-    // Copy of the syllable row of the atlas in ink.
-    function inkSyllables(src) {
+    // Copy of the syllable row of the atlas in one ink.
+    function inkSyllables(src, ink) {
       var c = canvas(SYLLABLES * SYL, SYL);
       var ctx = c.getContext("2d");
       ctx.drawImage(src, 0, MICE * MOUSE_H, SYLLABLES * SYL, SYL, 0, 0, SYLLABLES * SYL, SYL);
       ctx.globalCompositeOperation = "source-in";
-      ctx.fillStyle = USV_INK;
+      ctx.fillStyle = ink;
       ctx.fillRect(0, 0, c.width, c.height);
       return c;
     }
 
-    function syllableType() {
-      var total = SYLLABLE_WEIGHTS.reduce(function (a, b) { return a + b; }, 0);
+    // Index drawn from a list of weights.
+    function weighted(weights) {
+      var total = weights.reduce(function (a, b) { return a + b; }, 0);
       var r = p.random(total);
-      for (var i = 0; i < SYLLABLES; i++) {
-        if ((r -= SYLLABLE_WEIGHTS[i]) < 0) return i;
+      for (var i = 0; i < weights.length; i++) {
+        if ((r -= weights[i]) < 0) return i;
       }
       return 0;
     }
 
-    // A bout from mouse i: a row of syllables just above or below it (the
-    // other side from its last bout, if that fits in the frame), across
-    // the width of the mouse, with onsets in sequence from left to right.
-    // Returns the time the bout ends.
+    // A bout from mouse i: a few syllables, one after another, along its
+    // path to the other mouse. Returns the time the bout ends.
     function bout(i) {
       var m = mice[i];
-      var mh = m.w * MOUSE_H / MOUSE_W;
       var size = m.w * SYL_SIZE;
-      var reach = mh * 0.5 + size * 0.55;
-      var fits = function (side) {
-        var y = m.y + side * reach;
-        return y - size / 2 >= 0 && y + size / 2 <= p.height;
-      };
-      var side = -m.side;
-      if (!fits(side)) side = -side;
-      if (!fits(side)) return t;
-      m.side = side;
-      var y = m.y + side * reach;
-      var x0 = Math.max(size / 2, m.x - m.w * 0.6);
-      var x1 = Math.min(p.width - size / 2, m.x + m.w * 0.6);
+      var n = Math.floor(p.random(BOUT[0], BOUT[1] + 1));
       var onset = t;
-      var x = x0 + p.random(0, size * 0.3);
-      while (x <= x1) {
-        var sx = p.random(STRETCH_T[0], STRETCH_T[1]);
+      for (var k = 0; k < n; k++) {
         syllables.push({
-          x: x, y: y, dy: side, size: size, sx: sx, sy: p.random(STRETCH_F[0], STRETCH_F[1]),
-          tile: syllableType(), born: onset
+          path: i, size: size,
+          sx: p.random(STRETCH_T[0], STRETCH_T[1]), sy: p.random(STRETCH_F[0], STRETCH_F[1]),
+          off: p.random(-SPREAD, SPREAD) * size,
+          travel: TRAVEL * p.random(0.9, 1.1),
+          // Where a still syllable sits on the path, with reduced motion.
+          still: (k + 1) / (n + 1),
+          tile: weighted(SYLLABLE_WEIGHTS),
+          ink: weighted(USV_INKS.map(function (c) { return c[1]; })),
+          born: onset
         });
-        x += size * sx * p.random(SYL_SPACING[0], SYL_SPACING[1]);
         onset += p.random(SYL_INTERVAL[0], SYL_INTERVAL[1]);
       }
       return onset;
@@ -267,7 +319,9 @@
           mice[i].nextBout = bout(i) + p.random(BOUT_GAP[0], BOUT_GAP[1]);
         }
       }
-      syllables = syllables.filter(function (s) { return t - s.born < LIFE; });
+      syllables = syllables.filter(function (s) {
+        return t - s.born < (opts.reducedMotion ? LIFE : s.travel);
+      });
     }
 
     function idle() {
@@ -315,7 +369,7 @@
       layout();
       loadAtlas().then(function (img) {
         atlas = img;
-        inkAtlas = inkSyllables(img);
+        inkAtlases = USV_INKS.map(function (c) { return inkSyllables(img, c[0]); });
         drawRestLayer();
         p.canvas.style.visibility = "visible";
         p.redraw();
@@ -332,16 +386,28 @@
       syllables.forEach(function (s) {
         var age = t - s.born;
         if (age < 0) return;
-        var alpha = USV_ALPHA * Math.min(1, age / 0.12) * Math.exp(-Math.max(0, age - 0.5) / 0.45);
-        var written = opts.reducedMotion ? 1 : Math.min(1, age / WRITE);
-        var drift = opts.reducedMotion ? 0 : DRIFT * age / LIFE;
-        var w = s.size * s.sx;
-        var h = s.size * s.sy;
-        var x = s.x - w / 2;
-        var y = s.y + s.dy * drift - h / 2;
+        var q, alpha, written;
+        if (opts.reducedMotion) {
+          q = s.still;
+          alpha = Math.min(1, age / 0.12) * Math.exp(-Math.max(0, age - 0.8) / 0.5);
+          written = 1;
+        } else {
+          // Eased along the path; fades in as it leaves and out as it arrives.
+          var f = age / s.travel;
+          q = f * f * (3 - 2 * f) * 0.85 + f * 0.15;
+          alpha = Math.min(1, f / 0.08) * Math.min(1, (1 - f) / 0.3);
+          written = Math.min(1, age / WRITE);
+        }
+        var at = along(paths[s.path], q);
+        // A little smaller as it leaves, full size on arrival.
+        var grow = 0.8 + 0.2 * q;
+        var w = s.size * s.sx * grow;
+        var h = s.size * s.sy * grow;
+        var x = at.x + at.nx * s.off - w / 2;
+        var y = at.y + at.ny * s.off - h / 2;
         ctx.save();
-        ctx.globalAlpha = alpha;
-        ctx.drawImage(inkAtlas, s.tile * SYL, 0, SYL * written, SYL, x, y, w * written, h);
+        ctx.globalAlpha = USV_ALPHA * alpha;
+        ctx.drawImage(inkAtlases[s.ink], s.tile * SYL, 0, SYL * written, SYL, x, y, w * written, h);
         ctx.restore();
       });
 

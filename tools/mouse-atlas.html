@@ -11,7 +11,7 @@
       HIGHLIGHT (pale pigment over the ink: ears, eye ring, cheek,
       whiskers, specks);
     - SYLLABLES ultrasonic vocalisation syllables, as spectrogram contours
-      (time along x, frequency up), painted in ink.
+      (time along x, frequency up), painted as watercolour strokes.
 
   Painting is seeded, so the same SEED gives the same atlas.
 -->
@@ -48,7 +48,7 @@
     // Each layer is softened after painting by mixing in a blurred copy of
     // itself, as pigment spreads into damp paper: [radius px, mix].
     var SOFTEN = [[10, 0.75], [9, 0.7], [1.2, 0.2], [5, 0.55]];
-    var SYL_SOFTEN = [2, 0.35];
+    var SYL_SOFTEN = [2.5, 0.45];
 
     // The mice are drawn in a 900 x 680 design space (y down), mapped into
     // their tiles.
@@ -316,49 +316,85 @@
       { noise: true }                                                                                  // unclassified
     ];
 
+    // Open Catmull-Rom curve through the control points, n samples.
+    function openCurve(ctrl, n) {
+      var out = [];
+      var m = ctrl.length;
+      if (m === 1) return [ctrl[0]];
+      for (var k = 0; k < n; k++) {
+        var g = k / (n - 1) * (m - 1);
+        var i = Math.min(m - 2, Math.floor(g)), t = g - i;
+        var p0 = ctrl[Math.max(0, i - 1)], p1 = ctrl[i], p2 = ctrl[i + 1], p3 = ctrl[Math.min(m - 1, i + 2)];
+        var t2 = t * t, t3 = t2 * t;
+        out.push([0, 1].map(function (d) {
+          return 0.5 * (2 * p1[d] + (-p0[d] + p2[d]) * t + (2 * p0[d] - 5 * p1[d] + 4 * p2[d] - p3[d]) * t2 +
+            (-p0[d] + 3 * p1[d] - 3 * p2[d] + p3[d]) * t3);
+        }));
+      }
+      return out;
+    }
+
+    // A watercolour stroke along a curve given in atlas pixels, half-width
+    // w at its middle, tapering to its ends. p5.brush bridges concave
+    // outlines, so the stroke is laid as short, overlapping, nearly convex
+    // pieces; where they overlap the pigment pools, as in a wet stroke.
+    function wetStroke(pts, w, opacity, bleed) {
+      var n = pts.length;
+      var phase = random(1000);
+      var widths = pts.map(function (q, k) {
+        return w * (0.35 + 0.65 * Math.sin(Math.PI * (k + 0.5) / n)) * (0.75 + 0.5 * noise(phase + k * 0.25));
+      });
+      var left = [], right = [];
+      for (var k = 0; k < n; k++) {
+        var a = pts[Math.max(0, k - 1)], b = pts[Math.min(n - 1, k + 1)];
+        var nx = b[1] - a[1], ny = a[0] - b[0], len = Math.hypot(nx, ny) || 1;
+        left.push([pts[k][0] + nx / len * widths[k], pts[k][1] + ny / len * widths[k]]);
+        right.push([pts[k][0] - nx / len * widths[k], pts[k][1] - ny / len * widths[k]]);
+      }
+      for (var s = 0; s < n - 1; s += 4) {
+        var e = Math.min(n - 1, s + 5);
+        var poly = left.slice(s, e + 1).concat(right.slice(s, e + 1).reverse());
+        brush.fill(0, 0, 0, random(opacity[0], opacity[1]));
+        brush.fillBleed(random(bleed[0], bleed[1]), "out");
+        brush.fillTexture(random(0.35, 0.55), random(0.15, 0.35), true);
+        brush.polygon(poly.map(function (q) { return P(q[0], q[1]); }));
+      }
+      brush.noFill();
+    }
+
     function paintSyllable(i) {
       var ox = i * SYL, oy = MICE * MOUSE_H;
       var type = SYLLABLE_TYPES[i];
-      function at(t, f) { return P(ox + 10 + t * (SYL - 20), oy + SYL - 10 - f * (SYL - 20)); }
-      // One element, loudest (thickest) in its middle. Short elements are
-      // resampled, as p5.brush draws a two-point spline faintly.
-      function element(pts, weight) {
-        if (pts.length < 4) {
-          var dense = [];
-          for (var j = 0; j < pts.length - 1; j++) {
-            for (var u = 0; u < 3; u++) {
-              dense.push([pts[j][0] + (pts[j + 1][0] - pts[j][0]) * u / 3, pts[j][1] + (pts[j + 1][1] - pts[j][1]) * u / 3]);
-            }
-          }
-          dense.push(pts[pts.length - 1]);
-          pts = dense;
-        }
-        var n = pts.length;
-        brush.set("charcoal", "#000000", weight);
-        brush.spline(pts.map(function (q, k) {
-          return at(q[0], q[1]).concat([(0.5 + 0.5 * Math.sin(Math.PI * k / (n - 1))) * random(0.85, 1.1)]);
-        }), 0.5);
+      function at(q) { return [ox + 12 + q[0] * (SYL - 24), oy + SYL - 12 - q[1] * (SYL - 24)]; }
+      // One element: a faint, wide halo, then the denser trace over it.
+      function element(ctrl, scale) {
+        var span = 0;
+        for (var k = 1; k < ctrl.length; k++) span += Math.hypot(ctrl[k][0] - ctrl[k - 1][0], ctrl[k][1] - ctrl[k - 1][1]);
+        var pts = openCurve(ctrl.map(at), Math.max(5, Math.round(span * 22)));
+        wetStroke(pts, 6.5 * scale, [18, 30], [0.3, 0.45]);
+        wetStroke(pts, 3.2 * scale, [55, 85], [0.12, 0.25]);
       }
-      brush.noFill();
-      brush.wiggle(0.25);
+      brush.noStroke();
       if (type.noise) {
         // Broadband clicks: short vertical smears and specks.
         for (var k = 0; k < 6; k++) {
           var t = random(0.22, 0.78), f = random(0.15, 0.6);
-          element([[t, f], [t + random(-0.02, 0.02), f + random(0.08, 0.3)]], random(0.8, 1.1));
+          element([[t, f], [t + random(-0.02, 0.02), f + random(0.08, 0.3)]], random(0.6, 0.9));
         }
-        brush.noStroke();
-        brush.fill(0, 0, 0, 200);
-        brush.fillBleed(0.05);
-        for (k = 0; k < 5; k++) brush.circle(at(random(0.2, 0.8), random(0.15, 0.85))[0], at(0, random(0.15, 0.85))[1], random(1.5, 3), 0.5);
+        for (k = 0; k < 6; k++) {
+          var c = P.apply(null, at([random(0.2, 0.8), random(0.15, 0.85)]));
+          brush.fill(0, 0, 0, random(60, 100));
+          brush.fillBleed(0.2, "out");
+          brush.fillTexture(0.4, 0.2, true);
+          brush.circle(c[0], c[1], random(1.5, 3), 0.6);
+        }
         brush.noFill();
       } else {
-        type.els.forEach(function (e) { element(e, 1.3); });
+        type.els.forEach(function (e) { element(e, 1); });
         if (type.harmonic) {
-          type.els.forEach(function (e) { element(e.map(function (q) { return [q[0], 2 * q[1]]; }), 1.1); });
+          type.els.forEach(function (e) { element(e.map(function (q) { return [q[0], 2 * q[1]]; }), 0.8); });
         }
       }
-      brush.noField();
     }
 
     function setup() {
