@@ -48,7 +48,7 @@
   var BOUT_GAP = [0.6, 1.0];      // s of silence between bouts
   var SYL_INTERVAL = [0.28, 0.42]; // s between syllable onsets in a bout
   var SYL_SIZE = 0.3;             // syllable size, as a fraction of mouse width
-  var TRAVEL = 2.6;               // s for a syllable to reach the other mouse
+  var TRAVEL = 3.4;               // s for a syllable to reach the other mouse
   var SPREAD = 0.35;              // sideways scatter off the path, in syllable sizes
   var LIFE = 2.2;                 // s a syllable lasts when it does not move (reduced motion)
   var WRITE = 0.12;               // s to write a syllable out, left to right
@@ -136,8 +136,8 @@
       if (h / w >= TALL) {
         var mw = Math.min(w * 0.92, h * 0.34);
         mice = [
-          { x: w / 2, y: h * 0.3, w: mw, rot: -0.07, flip: 1 },
-          { x: w / 2, y: h * 0.7, w: mw, rot: -0.1, flip: -1 }
+          { x: w / 2, y: h * 0.13, w: mw, rot: -0.07, flip: 1 },
+          { x: w / 2, y: h * 0.87, w: mw, rot: -0.1, flip: -1 }
         ];
         bow = 0;
       } else {
