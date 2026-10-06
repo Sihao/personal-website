@@ -5,8 +5,7 @@
   Open this file in a browser with WebGL2 and save the result as
   site/static/img/mice.webp. The atlas is white, with alpha = pigment
   density, so the sketch can tint each layer with any colour. It holds:
-    - two mice in profile, facing left, in the manner of an ink painting on
-      silk: a caller and a listener. Each mouse is three layers, composited
+    - two mice in profile, facing left, in the manner of an ink painting: a caller and a listener. Each mouse is three layers, composited
       in order: BASE (pale pigment: body, paws, tail), WASH (soft ink
       markings), LINE (crisp ink: eye, nose, toes, tail rings, dust) and
       HIGHLIGHT (pale pigment over the ink: ears, eye ring, cheek,
@@ -21,9 +20,9 @@
   <meta charset="utf-8">
   <title>Mouse atlas</title>
   <style>
-    body { margin: 16px; font-family: sans-serif; background: #a97d44; color: #14213d; }
+    body { margin: 16px; font-family: sans-serif; background: #ffffff; color: #14213d; }
     body > canvas, main > canvas { display: none; }
-    img { display: block; max-width: 100%; margin-bottom: 16px; background: #a97d44; }
+    img { display: block; max-width: 100%; margin-bottom: 16px; background: #ffffff; }
     a { color: #14213d; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.min.js" integrity="sha384-Cs48F1uukMPysq29xNsf/FZL5ZNGsPfi6lDSGOxo6dypVFFiWO9Q3YbRKoXPPBii" crossorigin="anonymous"></script>
@@ -47,7 +46,7 @@
     var H = MICE * MOUSE_H + SYL;
 
     // Each layer is softened after painting by mixing in a blurred copy of
-    // itself, as pigment spreads into damp silk: [radius px, mix].
+    // itself, as pigment spreads into damp paper: [radius px, mix].
     var SOFTEN = [[10, 0.75], [9, 0.7], [1.2, 0.2], [5, 0.55]];
     var SYL_SOFTEN = [3, 0.55];
 
@@ -272,7 +271,7 @@
       origin = [3 * MOUSE_W, m * MOUSE_H];
       brush.noStroke();
       // Ear glazes gather towards the rim, so the ear is thinner, and the
-      // silk shows through, near its base.
+      // ground shows through, near its base.
       glazes(ellipsePts.apply(null, farEar), [farEar[0] - 15, farEar[1] - 25], { n: 4, shrink: 0.7, rough: 5, jitter: 8, opacity: [55, 80], bleed: [0.2, 0.35], texture: [0.25, 0.35] });
       glazes(ellipsePts.apply(null, nearEar), [nearEar[0] - 15, nearEar[1] - 35], { n: 4, shrink: 0.7, rough: 5, jitter: 8, opacity: [60, 85], bleed: [0.2, 0.35], texture: [0.25, 0.35] });
       glazes(band(arcPts(nearEar, 2.0, 4.3, 10), 9, 5), [nearEar[0] - 55, nearEar[1]],

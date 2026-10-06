@@ -1,4 +1,4 @@
-// Two mice on silk, in the manner of an ink painting: one calls, the other
+// Two mice on white, in the manner of an ink painting: one calls, the other
 // listens. Hovering over a mouse (or tapping it) makes it vocalise:
 // bouts of ultrasonic vocalisation syllables appear around it, alternately
 // above and below, as rows of spectrogram contours (time along x,
@@ -22,18 +22,13 @@
   var SYL = 150;
   var SYLLABLES = 8;
 
-  var SILK_RGB = [169, 125, 68];  // ochre silk
-  // Colour and opacity of each layer of a mouse: pale pigment, ink wash,
-  // ink line, pale pigment over the ink.
-  var LAYER_TINTS = [["#f3efe6", 0.62], ["#1f1a14", 0.9], ["#14110d", 0.95], ["#f6f2ea", 0.72]];
+  var BG = "#ffffff";
+  // Colour and opacity of each layer of a mouse: a pale warm-grey wash for
+  // the body (so a white mouse still reads on white), ink wash, ink line,
+  // and a lighter grey over the ink for the ears, eye ring and cheek.
+  var LAYER_TINTS = [["#b9b1a4", 0.5], ["#1f1a14", 0.9], ["#14110d", 0.95], ["#d2cbc0", 0.75]];
   var USV_INK = "#14213d";        // --prussian-blue
   var USV_ALPHA = 0.85;
-
-  var WARP = 2.6;                 // +/- levels between vertical threads, of 255
-  var WEFT = 1.1;                 // +/- levels between horizontal threads
-  var GRAIN = 2;                  // +/- levels of per-pixel grain
-  var MOTTLE = 7;                 // +/- levels of broad, uneven ageing
-  var EDGE_DARKEN = 14;           // levels darker at the edges of the scroll
 
   var TALL = 1.4;                 // height / width above which the mice are stacked
   var TAP_HOLD = 2.5;             // s a tapped mouse keeps calling
@@ -176,63 +171,16 @@
       ctx.restore();
     }
 
-    // The silk, per device pixel: ochre, with fine vertical and horizontal
-    // threads, a grain, broad uneven ageing, and edges darkened as on an
-    // old scroll.
-    function ground(g) {
-      var c = g.elt;
-      var w = c.width;
-      var h = c.height;
-      var k = w / p.width;
-      var phase = p.random(1000);
-      var warp = new Float32Array(w);
-      var weft = new Float32Array(h);
-      var x, y;
-      for (x = 0; x < w; x++) warp[x] = (Math.random() * 2 - 1) * WARP;
-      for (y = 0; y < h; y++) weft[y] = (Math.random() * 2 - 1) * WEFT;
-      // Broad ageing, sampled every 8 CSS px and interpolated.
-      var step = 8 * k;
-      var nx = Math.ceil(w / step) + 2;
-      var ny = Math.ceil(h / step) + 2;
-      var mottle = new Float32Array(nx * ny);
-      for (y = 0; y < ny; y++) {
-        for (x = 0; x < nx; x++) {
-          var u = x * step / k, v = y * step / k;
-          mottle[y * nx + x] = (p.noise(phase + u * 0.012, v * 0.012) - 0.5) * 2 * MOTTLE +
-            (p.noise(phase + 40 + u * 0.05, v * 0.05) - 0.5) * MOTTLE * 0.5;
-        }
-      }
-      var ctx = c.getContext("2d");
-      var img = ctx.createImageData(w, h);
-      var d = img.data;
-      var edge = 30 * k;
-      for (y = 0; y < h; y++) {
-        var fy = y / step, y0 = Math.floor(fy), ty = fy - y0;
-        for (x = 0; x < w; x++) {
-          var fx = x / step, x0 = Math.floor(fx), tx = fx - x0;
-          var m = (mottle[y0 * nx + x0] * (1 - tx) + mottle[y0 * nx + x0 + 1] * tx) * (1 - ty) +
-            (mottle[(y0 + 1) * nx + x0] * (1 - tx) + mottle[(y0 + 1) * nx + x0 + 1] * tx) * ty;
-          var e = Math.min(x, y, w - 1 - x, h - 1 - y) / edge;
-          var off = m + warp[x] + weft[y] + (Math.random() * 2 - 1) * GRAIN -
-            (e < 1 ? EDGE_DARKEN * (1 - e) * (1 - e) : 0);
-          var o = 4 * (y * w + x);
-          d[o] = SILK_RGB[0] + off;
-          d[o + 1] = SILK_RGB[1] + off * 0.85;
-          d[o + 2] = SILK_RGB[2] + off * 0.6;
-          d[o + 3] = 255;
-        }
-      }
-      ctx.putImageData(img, 0, 0);
-    }
-
-    // The silk and the mice, each layer tinted through one scratch tile.
+    // The background and the mice, each layer tinted through one scratch
+    // tile.
     function drawRestLayer() {
       if (!restLayer) restLayer = p.createGraphics(p.width, p.height);
       else restLayer.resizeCanvas(p.width, p.height);
       var ctx = restLayer.drawingContext;
       var scratch = canvas(MOUSE_W, MOUSE_H);
       var sctx = scratch.getContext("2d");
-      ground(restLayer);
+      ctx.fillStyle = BG;
+      ctx.fillRect(0, 0, p.width, p.height);
       mice.forEach(function (m) {
         for (var l = 0; l < LAYERS; l++) {
           var tile = mouseTile(m.tile, l);
@@ -323,7 +271,7 @@
       p.canvas.style.display = "block";
       p.canvas.style.visibility = "hidden";
       p.canvas.setAttribute("aria-hidden", "true");
-      el.style.backgroundColor = "rgb(" + SILK_RGB.join(",") + ")";
+      el.style.backgroundColor = BG;
       el.addEventListener("pointermove", function (e) {
         if (e.pointerType !== "mouse") return;
         pointer = local(e);
