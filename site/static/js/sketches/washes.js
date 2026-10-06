@@ -1,7 +1,8 @@
 // Abstract watercolour washes that flare like cells in a calcium recording.
 //
 // The field is a composition of watercolour blots in diagonal streams, with
-// trails of dust behind them and jagged pencil lines over them. Each blot is
+// trails of dust behind them and jagged pencil lines over them, on a ground
+// ribbed with faint vertical fibres like laid paper. Each blot is
 // a "cell" with its own calcium signal: calcium decays exponentially, and the
 // rendered fluorescence is a saturating function of it, as with a GCaMP-type
 // indicator. A fluorescent blot turns orange; its size never changes.
@@ -36,8 +37,8 @@
   var LINE_COLOURS = [["#e5e5e5", 3], ["#ffffff", 1], ["#000000", 2], ["#8790a6", 1]];
 
   var FLOW = 0.5;                 // rad, mean direction of the streams (down to the right)
-  var STREAM_GAP = 44;            // px between streams, at a field height of 220 px
-  var BLOT_SIZE = [55, 125];      // px, sprite size range, at a field height of 220 px
+  var STREAM_GAP = 38;            // px between streams, at a field height of 220 px
+  var BLOT_SIZE = [42, 98];       // px, sprite size range, at a field height of 220 px
   var CLEARING = 0.35;            // noise level below which a stream has gaps
   var LINES_PER_100K = 9;         // zigzags per 100,000 px^2
   var DUST = 0.35;                // fraction of blots with a dust trail
@@ -222,6 +223,29 @@
       ctx.restore();
     }
 
+    // Paper: broad, faint vertical bands and fine vertical fibres that fade
+    // in and out along their length, like the ribbing of laid paper or card.
+    function paper(ctx, w, h) {
+      var x, y, len;
+      for (x = 0; x < w; x += p.random(10, 24)) {
+        ctx.fillStyle = "rgba(229, 229, 229, " + p.random(0.01, 0.035) + ")";
+        ctx.fillRect(x, 0, p.random(3, 10), h);
+      }
+      for (x = 0; x < w; x += p.random(1.5, 4)) {
+        ctx.strokeStyle = p.random() < 0.65 ? "#e5e5e5" : "#000000";
+        ctx.lineWidth = p.random(0.5, 1.4);
+        for (y = -p.random(80); y < h; y += len) {
+          len = p.random(20, 110);
+          ctx.globalAlpha = p.random(0, 0.045);
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + p.random(-0.6, 0.6), y + len);
+          ctx.stroke();
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
     // The resting composition. Each sprite is tinted through one scratch
     // tile, so no tinted copy of the whole atlas is kept per colour.
     function drawRestLayer() {
@@ -233,6 +257,7 @@
       ctx.save();
       ctx.fillStyle = BG;
       ctx.fillRect(0, 0, p.width, p.height);
+      paper(ctx, p.width, p.height);
       dust.concat(blots, lines).forEach(function (s) {
         var o = tileOrigin(s.tile);
         sctx.globalCompositeOperation = "copy";
