@@ -51,17 +51,24 @@
 
 /* Publication cards on the landing page: upright golden rectangles,
    white, outlined in Prussian blue, with a small mouse from the
-   publication's painting in the bottom right corner and a few syllables
-   rising from its mouth (site/static/img/mouse-card.webp, rendered by
-   tools/mouse-card.html; the mouse is 57% of the image's width, so 80 px
-   here). "Read more" sits on the bottom edge of the padding, level with
+   publication's painting in the bottom right corner
+   (site/static/img/mouse-card.webp, rendered by tools/mouse-card.html),
+   and syllables rising from its mouth, animated on a canvas over the
+   corner by site/static/js/usv-card.js. "Read more" sits on the bottom edge of the padding, level with
    the bottom of the mouse. One card per row on phones, two on tablets,
    three on wider screens. */
 .publication-card {
   box-sizing: border-box;
   aspect-ratio: 1 / 1.618;
   border: 2px solid var(--prussian-blue);
-  background: var(--white) url(/img/mouse-card.webp) no-repeat right var(--spacing-medium) bottom var(--spacing-medium) / 140px auto;
+  background: var(--white) url(/img/mouse-card.webp) no-repeat right var(--spacing-medium) bottom var(--spacing-medium) / 80px auto;
+}
+
+.publication-usv {
+  position: absolute;
+  right: var(--spacing-medium);
+  bottom: var(--spacing-medium);
+  pointer-events: none;
 }
 
 .publication-more {

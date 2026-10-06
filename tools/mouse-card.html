@@ -1,9 +1,10 @@
 <!doctype html>
 <!--
   Renders the small mouse in the corner of publication cards on the landing
-  page, with a few ultrasonic vocalisation syllables rising from its mouth
-  along a short curve, from the painted atlas, with the tints the sketch
-  uses.
+  page, from the painted atlas, with the tints the sketch uses. The
+  syllables rising from its mouth are animated over it by
+  site/static/js/usv-card.js, which needs the snout's position in this
+  image: the tool prints it.
 
   Serve the repository root with any static server (the atlas cannot be
   read back from a file:// page), open /tools/mouse-card.html, and save the
@@ -26,56 +27,32 @@
     var ATLAS_SRC = "../site/static/img/mice.webp";
     var MOUSE_W = 400;
     var MOUSE_H = 280;
-    var MICE = 2;
     var LAYER_TINTS = [["#2f2f31", 1, 2], ["#151517", 0.5, 1], ["#202022", 0.9, 1], ["#6a6a6c", 0.3, 1]];
-    var SYL = 128;
     var SNOUT = { u: 0.08, v: 0.68 };
 
     var MOUSE = 0;                // the caller, facing left
-    var MOUSE_OUT = 200;          // px, width of the mouse in the output, about 2.5x its size on the card
-    // Syllables rising from the mouth along a short curve, in mouse widths
-    // from the snout (x right, y down): a cubic Bezier, and for each
-    // syllable its place on it, its type (atlas order), size and opacity.
-    // Small and dense at the mouth, larger and fainter as they rise.
-    var RISE = [[-0.05, -0.04], [-0.85, -0.3], [-0.7, -1.75], [0.05, -2.25]];
-    var SYLLABLES = [
-      { t: 0.1, type: 6, size: 0.45, alpha: 1, ink: "#14213d" },  // complex 2
-      { t: 0.36, type: 3, size: 0.52, alpha: 0.95, ink: "#4d5874" }, // U-shaped
-      { t: 0.62, type: 5, size: 0.58, alpha: 0.85, ink: "#14213d" }, // complex
-      { t: 0.88, type: 7, size: 0.65, alpha: 0.75, ink: "#4d5874" }   // complex 3
-    ];
-
-    function bezier(c, t) {
-      var r = 1 - t;
-      return [0, 1].map(function (d) {
-        return r * r * r * c[0][d] + 3 * r * r * t * c[1][d] + 3 * r * t * t * c[2][d] + t * t * t * c[3][d];
-      });
-    }
-
-    function tinted(x, y, w, h, colour) {
-      var c = document.createElement("canvas");
-      c.width = w;
-      c.height = h;
-      var ctx = c.getContext("2d");
-      ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
-      ctx.globalCompositeOperation = "source-in";
-      ctx.fillStyle = colour;
-      ctx.fillRect(0, 0, w, h);
-      return c;
-    }
+    var WIDTH = 200;              // px of the output, about 2.5x its size on the card
 
     var img = new Image();
     img.onload = function () {
+      var layer = document.createElement("canvas");
+      layer.width = MOUSE_W;
+      layer.height = MOUSE_H;
+      var lctx = layer.getContext("2d");
       var full = document.createElement("canvas");
       full.width = MOUSE_W;
       full.height = MOUSE_H;
       var ctx = full.getContext("2d");
       LAYER_TINTS.forEach(function (tint, l) {
-        var layer = tinted(l * MOUSE_W, MOUSE * MOUSE_H, MOUSE_W, MOUSE_H, tint[0]);
+        lctx.globalCompositeOperation = "copy";
+        lctx.drawImage(img, l * MOUSE_W, MOUSE * MOUSE_H, MOUSE_W, MOUSE_H, 0, 0, MOUSE_W, MOUSE_H);
+        lctx.globalCompositeOperation = "source-in";
+        lctx.fillStyle = tint[0];
+        lctx.fillRect(0, 0, MOUSE_W, MOUSE_H);
         ctx.globalAlpha = tint[1];
         for (var pass = 0; pass < tint[2]; pass++) ctx.drawImage(layer, 0, 0);
       });
-      // The mouse's painted extent, with a small margin.
+      // Crop to the painted pixels, with a small margin.
       var data = ctx.getImageData(0, 0, MOUSE_W, MOUSE_H).data;
       var x0 = MOUSE_W, y0 = MOUSE_H, x1 = 0, y1 = 0;
       for (var y = 0; y < MOUSE_H; y++) {
@@ -89,40 +66,19 @@
       x0 = Math.max(0, x0 - 4); y0 = Math.max(0, y0 - 4);
       x1 = Math.min(MOUSE_W - 1, x1 + 4); y1 = Math.min(MOUSE_H - 1, y1 + 4);
       var w = x1 - x0 + 1, h = y1 - y0 + 1;
-      var k = MOUSE_OUT / w;
-      var mouseH = Math.round(h * k);
-
-      // Room above the mouse for the syllables; the mouse sits at the
-      // bottom right.
-      var snout = [(SNOUT.u * MOUSE_W - x0) * k, (SNOUT.v * MOUSE_H - y0) * k];
-      var pts = RISE.map(function (q) { return [snout[0] + q[0] * MOUSE_OUT, snout[1] + q[1] * MOUSE_OUT]; });
-      var placed = SYLLABLES.map(function (s) {
-        var at = bezier(pts, s.t);
-        return { s: s, x: at[0], y: at[1], size: s.size * MOUSE_OUT };
-      });
-      var top = Math.min(0, Math.min.apply(null, placed.map(function (q) { return q.y - q.size / 2; })));
-      var left = Math.min(0, Math.min.apply(null, placed.map(function (q) { return q.x - q.size / 2; })));
       var out = document.createElement("canvas");
-      out.width = Math.ceil(MOUSE_OUT - left);
-      out.height = Math.ceil(mouseH - top);
-      var octx = out.getContext("2d");
-      octx.translate(-left, -top);
-      octx.drawImage(full, x0, y0, w, h, 0, 0, MOUSE_OUT, mouseH);
-      placed.forEach(function (q) {
-        var src = tinted(q.s.type * SYL, MICE * MOUSE_H, SYL, SYL, q.s.ink);
-        // Twice, to deepen the thin washes at this small size.
-        octx.globalAlpha = q.s.alpha;
-        for (var pass = 0; pass < 2; pass++) octx.drawImage(src, q.x - q.size / 2, q.y - q.size / 2, q.size, q.size);
-      });
-
+      out.width = WIDTH;
+      out.height = Math.round(WIDTH * h / w);
+      out.getContext("2d").drawImage(full, x0, y0, w, h, 0, 0, out.width, out.height);
       var url = out.toDataURL("image/webp", 0.9);
       window.cardDataURL = url;
-      window.cardMouseWidth = MOUSE_OUT / out.width;
       var link = document.createElement("a");
       link.href = url;
       link.download = "mouse-card.webp";
+      var snout = { u: (SNOUT.u * MOUSE_W - x0) / w, v: (SNOUT.v * MOUSE_H - y0) / h };
+      window.cardSnout = snout;
       link.textContent = "Download mouse-card.webp (" + out.width + " x " + out.height +
-        "; the mouse is " + Math.round(100 * MOUSE_OUT / out.width) + "% of its width)";
+        "); snout at u " + snout.u.toFixed(3) + ", v " + snout.v.toFixed(3) + " (set SNOUT in usv-card.js)";
       document.getElementById("status").replaceChildren(link);
       var preview = document.createElement("img");
       preview.src = url;
