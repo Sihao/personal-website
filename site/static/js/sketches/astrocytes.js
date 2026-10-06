@@ -44,7 +44,7 @@
   var NEUROPIL_ACTIVE = 0.75;     // peak opacity of a lit neuropil microdomain
   var DOMAIN_GAMMA = 0.6;         // < 1 lifts faint haze when it lights up
   var DOMAIN_GAIN = 1.8;          // and so does this
-  var FEATHER = { soma: 2, process: 2, domain: 8 };  // atlas px of soft border
+  var FEATHER = { soma: 5, process: 5, domain: 8 };  // atlas px of soft border
 
   var SPACING = 170;              // px between astrocyte centres
   var SPRITE = 1.3;               // sprite size, in units of SPACING
