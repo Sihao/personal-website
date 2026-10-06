@@ -53,16 +53,24 @@
    blue, with a small mouse from the publication's painting in the
    bottom right corner (site/static/img/mouse-card.webp, rendered by
    tools/mouse-card.html). "Read more" sits on the bottom edge of the
-   padding, level with the bottom of the mouse. */
+   padding, level with the bottom of the mouse. One card per row on
+   phones, two on tablets, three on wider screens, where the cards are
+   upright, 4:5. */
 .publication-card {
   border: 2px solid var(--prussian-blue);
-  padding-right: 6rem;
   background: var(--white) url(/img/mouse-card.webp) no-repeat right var(--spacing-medium) bottom var(--spacing-medium) / 80px auto;
 }
 
 .publication-more {
   margin-top: auto;
   line-height: 1;
+}
+
+@media (--breakpoint-medium) {
+  .publication-card { aspect-ratio: 4 / 5; }
+  /* Each cell has a right gutter; the row's negative margin takes up the
+     last one, so the cards span the full width. */
+  .publication-grid { margin-right: calc(-1 * var(--spacing-medium)); }
 }
 
 /* Publication pages: the painting is a tall, narrow scroll beside the

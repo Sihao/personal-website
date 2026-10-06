@@ -3,9 +3,9 @@
 
 		<h2 class="f3 b lh-title mb3">Publications</h2>
 
-		<div class="w-100 flex-ns flex-wrap mb3">
-			{{ range first 4 (where .Data.Pages.ByDate.Reverse "Type" "publications") }}
-				<div class="pr3-ns pv2-ns w-50-ns flex">
+		<div class="publication-grid flex flex-wrap mb3">
+			{{ range first 6 (where .Data.Pages.ByDate.Reverse "Type" "publications") }}
+				<div class="pr3-m pv2 w-100 w-50-m w-third-l flex">
 					{{ .Render "li" }}
 				</div>
 			{{ end }}
