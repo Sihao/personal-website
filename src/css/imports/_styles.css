@@ -77,9 +77,11 @@
 }
 
 @media (--breakpoint-medium) {
-  /* Each cell has a right gutter; the row's negative margin takes up the
-     last one, so the cards span the full width. */
-  .publication-grid { margin-right: calc(-1 * var(--spacing-medium)); }
+  /* The grid of the landing page's publication cards, which the About
+     block above them shares. Each cell has a right gutter; the row's
+     negative margin takes up the last one, so the row spans the full
+     width. */
+  .card-grid { margin-right: calc(-1 * var(--spacing-medium)); }
 }
 
 /* Publication pages: the painting is a tall, narrow scroll beside the

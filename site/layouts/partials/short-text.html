@@ -1,15 +1,18 @@
+{{/* On the grid of the publication cards below: the photo over the first
+     card's column, the text across the rest. Stacked on phones. */}}
 <div class="bg-off-white pv4">
-    <div class="flex-l mhn1-l ph6-m ph4-ns center mw9 db-ns">
-        <div class="w-third mw5 mh0-m mh6-ns ph3-m ph1-ns center">
-            <img src={{.image}} class="br-100 w-100">
-        </div>
-        <div class="mhn1-r ph3 center mw7 w-two-thirds db-ns">
-            <h2 class="f3 b lh-title mb2 w-60-l">{{.heading}}</h2>
-            <p class="w-100-l mb0">{{.text}}</p>
-                <div class="fl">
-        {{ partial "social-icon" (dict "twitter_link" "https://twitter.com/SihaoLu" "github_link" "https://github.com/Sihao" "linkedin_link" "https://www.linkedin.com/in/sihao-lu-a4151184/")}}
-    </div>
-        </div>
-    </div>
-
+	<div class="ph3 mw8 center">
+		<div class="card-grid flex-m items-center-m">
+			<div class="w-50-m w-third-l pr3-m mb3 mb0-m tc tl-m">
+				<img src="{{ .image }}" alt="Sihao Lu" class="br-100 w-100 mw5 dib v-mid">
+			</div>
+			<div class="w-50-m w-two-thirds-l pr3-m">
+				<h2 class="f3 b lh-title mb2">{{ .heading }}</h2>
+				<p class="mb0 mw-none">{{ .text }}</p>
+				<div class="dib">
+					{{ partial "social-icon" (dict "twitter_link" "https://twitter.com/SihaoLu" "github_link" "https://github.com/Sihao" "linkedin_link" "https://www.linkedin.com/in/sihao-lu-a4151184/") }}
+				</div>
+			</div>
+		</div>
+	</div>
 </div>
