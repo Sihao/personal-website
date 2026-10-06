@@ -1,4 +1,5 @@
-// Two mice on white, in the manner of an ink painting: one calls, the other
+// Two abstract mice on white, in the manner of an ink painting, dark grey
+// silhouettes with a fan of whiskers: one calls, the other
 // listens. Hovering over a mouse (or tapping it) makes it vocalise: bouts
 // of ultrasonic vocalisation syllables, as spectrogram contours (time
 // along x, frequency up), leave its snout and travel along a curve to the
@@ -32,10 +33,9 @@
   var STRETCH_F = [0.9, 1.1];     // range of frequency stretch
 
   var BG = "#ffffff";
-  // Colour and opacity of each layer of a mouse: a pale warm-grey wash for
-  // the body (so a white mouse still reads on white), ink wash, ink line,
-  // and a lighter grey over the ink for the ears, eye ring and cheek.
-  var LAYER_TINTS = [["#b9b1a4", 0.5], ["#1f1a14", 0.9], ["#14110d", 0.95], ["#d2cbc0", 0.75]];
+  // Colour and opacity of each layer of a mouse, all dark grey: the
+  // silhouette, darker pools, whiskers and dust, and lighter blooms.
+  var LAYER_TINTS = [["#3b3b3d", 0.85], ["#1f1f21", 0.45], ["#2b2b2d", 0.9], ["#8a8a8c", 0.3]];
   // Inks of the syllables, with their weights: Prussian blue, and a tint of
   // it towards alabaster.
   var USV_INKS = [["#14213d", 3], ["#4d5874", 2]];
@@ -54,12 +54,12 @@
 
   // Where a syllable leaves and arrives, in tile fractions (the mouse
   // faces left in its tile): just in front of the snout, and the near ear.
-  var SNOUT = { u: 0.04, v: 0.68 };
-  var EAR = { u: 0.25, v: 0.3 };
+  var SNOUT = { u: 0.08, v: 0.68 };
+  var EAR = { u: 0.3, v: 0.3 };
 
   // The mouse in its tile, for hit testing: an ellipse round body and ears,
   // in tile fractions (the mouse faces left in the tile).
-  var HIT = { x: 0.5, y: 0.52, rx: 0.48, ry: 0.46 };
+  var HIT = { x: 0.53, y: 0.52, rx: 0.47, ry: 0.46 };
 
   function canvas(w, h) {
     var c = document.createElement("canvas");
@@ -71,8 +71,8 @@
   function mouseTile(m, layer) { return { x: layer * MOUSE_W, y: m * MOUSE_H, w: MOUSE_W, h: MOUSE_H }; }
   function sylTile(i) { return { x: i * SYL, y: MICE * MOUSE_H, w: SYL, h: SYL }; }
 
-  // Used if the painted atlas cannot be loaded: a pale mouse shape with a
-  // dark eye, and plain contours, in the same layout.
+  // Used if the painted atlas cannot be loaded: a soft mouse silhouette
+  // and plain contours, in the same layout.
   function fallbackAtlas() {
     var c = canvas(LAYERS * MOUSE_W, MICE * MOUSE_H + SYL);
     var ctx = c.getContext("2d");
@@ -82,17 +82,12 @@
       ctx.save();
       ctx.filter = "blur(4px)";
       ctx.beginPath();
-      ctx.ellipse(220, y + 160, 160, 95, 0, 0, Math.PI * 2);
-      ctx.ellipse(80, y + 175, 60, 45, -0.3, 0, Math.PI * 2);
+      ctx.ellipse(235, y + 160, 155, 95, 0, 0, Math.PI * 2);
+      ctx.ellipse(95, y + 175, 60, 45, -0.3, 0, Math.PI * 2);
+      ctx.ellipse(85, y + 95, 26, 38, -0.2, 0, Math.PI * 2);
+      ctx.ellipse(135, y + 85, 28, 48, 0.1, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-      ctx.beginPath();
-      ctx.arc(2 * MOUSE_W + 65, y + 170, 7, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.ellipse(3 * MOUSE_W + 70, y + 90, 26, 38, -0.2, 0, Math.PI * 2);
-      ctx.ellipse(3 * MOUSE_W + 120, y + 80, 28, 48, 0.1, 0, Math.PI * 2);
-      ctx.fill();
     }
     ctx.lineWidth = 3;
     for (var i = 0; i < SYLLABLES; i++) {
