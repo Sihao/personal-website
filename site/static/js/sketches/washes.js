@@ -2,7 +2,7 @@
 //
 // The field is a composition of watercolour blots in diagonal streams, with
 // trails of dust behind them and jagged pencil lines over them, on a ground
-// ribbed with faint vertical fibres like laid paper. Each blot is
+// with a fine grain and soft, long streaks, like brushed paper. Each blot is
 // a "cell" with its own calcium signal: calcium decays exponentially, and the
 // rendered fluorescence is a saturating function of it, as with a GCaMP-type
 // indicator. A fluorescent blot turns orange; its size never changes.
@@ -30,11 +30,16 @@
   var ZIGZAGS = 8;
 
   var BG = "#14213d";             // --prussian-blue
+  var BG_RGB = [20, 33, 61];
   var ACTIVE = "#fca311";         // --orange
   // Resting colours of the blots, with their weights: alabaster, white,
   // black, and two tints of Prussian blue towards alabaster.
   var BLOT_COLOURS = [["#e5e5e5", 2], ["#ffffff", 2], ["#000000", 3], ["#8790a6", 2], ["#4d5874", 2]];
   var LINE_COLOURS = [["#e5e5e5", 3], ["#ffffff", 1], ["#000000", 2], ["#8790a6", 1]];
+
+  var STREAKS = "horizontal";     // direction of the ground's streaks: "horizontal" or "vertical"
+  var GRAIN = 3;                  // +/- levels of per-pixel grain, of 255
+  var STREAK_DEPTH = 5;           // levels darker at the core of a streak
 
   var FLOW = 0.5;                 // rad, mean direction of the streams (down to the right)
   var STREAM_GAP = 38;            // px between streams, at a field height of 220 px
@@ -55,6 +60,11 @@
   var EVOKED_EVENTS = 1.5;        // calcium per recruited blot
   var K_D = 0.8;                  // indicator half-saturation
   var PREWARM = 3;                // s simulated before the first frame
+
+  function ramp(e0, e1, x) {
+    var t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
+  }
 
   function tileOrigin(i) {
     return { x: (i % COLS) * TILE, y: Math.floor(i / COLS) * TILE };
@@ -223,27 +233,53 @@
       ctx.restore();
     }
 
-    // Paper: broad, faint vertical bands and fine vertical fibres that fade
-    // in and out along their length, like the ribbing of laid paper or card.
-    function paper(ctx, w, h) {
-      var x, y, len;
-      for (x = 0; x < w; x += p.random(10, 24)) {
-        ctx.fillStyle = "rgba(229, 229, 229, " + p.random(0.01, 0.035) + ")";
-        ctx.fillRect(x, 0, p.random(3, 10), h);
-      }
-      for (x = 0; x < w; x += p.random(1.5, 4)) {
-        ctx.strokeStyle = p.random() < 0.65 ? "#e5e5e5" : "#000000";
-        ctx.lineWidth = p.random(0.5, 1.4);
-        for (y = -p.random(80); y < h; y += len) {
-          len = p.random(20, 110);
-          ctx.globalAlpha = p.random(0, 0.045);
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(x + p.random(-0.6, 0.6), y + len);
-          ctx.stroke();
+    // The ground, per device pixel: the background colour with a fine grain,
+    // and soft, long streaks a few pixels wide that fade in and out along
+    // their length. The streak field is sampled once per device pixel across
+    // the streaks and every 8 CSS px along them, and interpolated.
+    function ground(g) {
+      var c = g.elt;
+      var w = c.width;
+      var h = c.height;
+      var k = w / p.width;
+      var horizontal = STREAKS === "horizontal";
+      var across = horizontal ? h : w;
+      var along = horizontal ? w : h;
+      var step = 8 * k;
+      var na = Math.ceil(along / step) + 2;
+      var field = new Float32Array(across * na);
+      var phase = p.random(1000);
+      var i, j, u, v;
+      for (i = 0; i < across; i++) {
+        u = i / k;
+        for (j = 0; j < na; j++) {
+          v = j * step / k;
+          // Fine streaks, faded in and out along their length, over
+          // broader, fainter bands.
+          field[i * na + j] = 0.75 * ramp(0.42, 0.66, p.noise(phase + u * 0.15, v * 0.004)) *
+            ramp(0.25, 0.55, p.noise(phase + 50 + u * 0.02, v * 0.002)) +
+            0.35 * ramp(0.4, 0.7, p.noise(phase + 90 + u * 0.04, v * 0.0015));
         }
       }
-      ctx.globalAlpha = 1;
+      var ctx = c.getContext("2d");
+      var img = ctx.createImageData(w, h);
+      var d = img.data;
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          var a = horizontal ? y : x;
+          var f = (horizontal ? x : y) / step;
+          var j0 = Math.floor(f);
+          var t = f - j0;
+          var streak = field[a * na + j0] * (1 - t) + field[a * na + j0 + 1] * t;
+          var off = -STREAK_DEPTH * streak + (Math.random() * 2 - 1) * GRAIN;
+          var o = 4 * (y * w + x);
+          d[o] = BG_RGB[0] + off;
+          d[o + 1] = BG_RGB[1] + off;
+          d[o + 2] = BG_RGB[2] + off;
+          d[o + 3] = 255;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
     }
 
     // The resting composition. Each sprite is tinted through one scratch
@@ -254,10 +290,8 @@
       var ctx = restLayer.drawingContext;
       var scratch = canvas(TILE, TILE);
       var sctx = scratch.getContext("2d");
+      ground(restLayer);
       ctx.save();
-      ctx.fillStyle = BG;
-      ctx.fillRect(0, 0, p.width, p.height);
-      paper(ctx, p.width, p.height);
       dust.concat(blots, lines).forEach(function (s) {
         var o = tileOrigin(s.tile);
         sctx.globalCompositeOperation = "copy";
