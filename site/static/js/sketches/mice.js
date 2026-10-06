@@ -4,9 +4,13 @@
 // above and below, as rows of spectrogram contours (time along x,
 // frequency up) written out left to right, which drift away and fade.
 //
-// In a tall frame the mice are stacked, both facing right, the caller's
-// head lowered and the listener's raised towards it; in a wide frame they
-// face each other across the middle.
+// In a tall frame the mice are stacked, facing opposite ways and a little
+// askew; in a wide frame they face each other across the middle.
+//
+// The syllables follow the usual classification of mouse USVs (flat, down,
+// up, U-shaped, inverted U, complex, complex 2 to 5, harmonic and
+// unclassified), weighted towards the complex types, and are stretched a
+// little in time and frequency so that repeats differ.
 //
 // The mice and syllables come from /img/mice.webp (white, alpha = pigment
 // density), painted ahead of time with p5.brush by tools/mouse-atlas.html.
@@ -19,8 +23,12 @@
   var MOUSE_H = 280;
   var MICE = 2;                   // caller, listener
   var LAYERS = 4;                 // base, wash, line, highlight
-  var SYL = 150;
-  var SYLLABLES = 8;
+  var SYL = 128;
+  var SYLLABLES = 12;
+  // Relative frequency of each syllable type, in atlas order.
+  var SYLLABLE_WEIGHTS = [1, 1, 1, 1, 1, 2, 2, 2, 1.5, 1.5, 1.5, 0.5];
+  var STRETCH_T = [0.85, 1.2];    // range of time stretch of a syllable
+  var STRETCH_F = [0.9, 1.1];     // range of frequency stretch
 
   var BG = "#ffffff";
   // Colour and opacity of each layer of a mouse: a pale warm-grey wash for
@@ -82,7 +90,7 @@
       var o = sylTile(i);
       ctx.beginPath();
       for (var k = 0; k <= 20; k++) {
-        ctx.lineTo(o.x + 20 + k * 5.5, o.y + 110 - 60 * Math.sin(Math.PI * k / 20 * (1 + i % 3) / 2));
+        ctx.lineTo(o.x + 20 + k * 4.4, o.y + 100 - 60 * Math.sin(Math.PI * k / 20 * (1 + i % 3) / 2));
       }
       ctx.stroke();
     }
@@ -106,7 +114,7 @@
   window.p5Sketches.mice = function (p, opts) {
     var el = opts.el;
     var mice = [];                // {x, y, w, rot, flip, tile, holdUntil, nextBout, side}
-    var syllables = [];           // {x, y, dy, size, tile, born}
+    var syllables = [];           // {x, y, dy, size, sx, sy, tile, born}
     var t = 0;
     var pointer = null;           // {x, y} while the pointer is over the frame
     var hovered = -1;
@@ -121,8 +129,8 @@
       if (h / w >= TALL) {
         var mw = Math.min(w * 0.92, h * 0.34);
         mice = [
-          { x: w / 2, y: h * 0.3, w: mw, rot: 0.2, flip: -1 },
-          { x: w / 2, y: h * 0.7, w: mw, rot: -0.24, flip: -1 }
+          { x: w / 2, y: h * 0.3, w: mw, rot: -0.07, flip: 1 },
+          { x: w / 2, y: h * 0.7, w: mw, rot: -0.1, flip: -1 }
         ];
       } else {
         var mw2 = Math.min(w * 0.4, h * 1.1);
@@ -205,6 +213,15 @@
       return c;
     }
 
+    function syllableType() {
+      var total = SYLLABLE_WEIGHTS.reduce(function (a, b) { return a + b; }, 0);
+      var r = p.random(total);
+      for (var i = 0; i < SYLLABLES; i++) {
+        if ((r -= SYLLABLE_WEIGHTS[i]) < 0) return i;
+      }
+      return 0;
+    }
+
     // A bout from mouse i: a row of syllables just above or below it (the
     // other side from its last bout, if that fits in the frame), across
     // the width of the mouse, with onsets in sequence from left to right.
@@ -226,8 +243,14 @@
       var x0 = Math.max(size / 2, m.x - m.w * 0.6);
       var x1 = Math.min(p.width - size / 2, m.x + m.w * 0.6);
       var onset = t;
-      for (var x = x0 + p.random(0, size * 0.3); x <= x1; x += size * p.random(SYL_SPACING[0], SYL_SPACING[1])) {
-        syllables.push({ x: x, y: y, dy: side, size: size, tile: Math.floor(p.random(SYLLABLES)), born: onset });
+      var x = x0 + p.random(0, size * 0.3);
+      while (x <= x1) {
+        var sx = p.random(STRETCH_T[0], STRETCH_T[1]);
+        syllables.push({
+          x: x, y: y, dy: side, size: size, sx: sx, sy: p.random(STRETCH_F[0], STRETCH_F[1]),
+          tile: syllableType(), born: onset
+        });
+        x += size * sx * p.random(SYL_SPACING[0], SYL_SPACING[1]);
         onset += p.random(SYL_INTERVAL[0], SYL_INTERVAL[1]);
       }
       return onset;
@@ -312,11 +335,13 @@
         var alpha = USV_ALPHA * Math.min(1, age / 0.12) * Math.exp(-Math.max(0, age - 0.5) / 0.45);
         var written = opts.reducedMotion ? 1 : Math.min(1, age / WRITE);
         var drift = opts.reducedMotion ? 0 : DRIFT * age / LIFE;
-        var x = s.x - s.size / 2;
-        var y = s.y + s.dy * drift - s.size / 2;
+        var w = s.size * s.sx;
+        var h = s.size * s.sy;
+        var x = s.x - w / 2;
+        var y = s.y + s.dy * drift - h / 2;
         ctx.save();
         ctx.globalAlpha = alpha;
-        ctx.drawImage(inkAtlas, s.tile * SYL, 0, SYL * written, SYL, x, y, s.size * written, s.size);
+        ctx.drawImage(inkAtlas, s.tile * SYL, 0, SYL * written, SYL, x, y, w * written, h);
         ctx.restore();
       });
 

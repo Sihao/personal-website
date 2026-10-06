@@ -36,8 +36,8 @@
     var MOUSE_H = 280;
     var MICE = 2;                 // caller, listener
     var LAYERS = 4;               // base, wash, line, highlight
-    var SYL = 150;                // px, one syllable tile
-    var SYLLABLES = 8;
+    var SYL = 128;                // px, one syllable tile
+    var SYLLABLES = 12;
 
     var SEED = 7;
     var BRUSH_SCALE = 1.2;
@@ -48,7 +48,7 @@
     // Each layer is softened after painting by mixing in a blurred copy of
     // itself, as pigment spreads into damp paper: [radius px, mix].
     var SOFTEN = [[10, 0.75], [9, 0.7], [1.2, 0.2], [5, 0.55]];
-    var SYL_SOFTEN = [3, 0.55];
+    var SYL_SOFTEN = [2, 0.35];
 
     // The mice are drawn in a 900 x 680 design space (y down), mapped into
     // their tiles.
@@ -289,46 +289,75 @@
       brush.noStroke();
     }
 
-    // Syllable contours: frequency (0 bottom .. 1 top) as a function of
-    // time t in 0..1, null in gaps. `harmonic` adds a fainter contour at
-    // twice the frequency.
+    // Syllable types, after the usual classification of mouse USVs: flat,
+    // down, up, U-shaped, inverted U, complex, complex 2 to 5, harmonic and
+    // unclassified. Each is a list of elements; each element is a contour
+    // through [time, frequency] control points, both 0..1 across the tile
+    // (frequency up). The elements of complex 2 to 5 follow one another
+    // with a jump in frequency and no gap in time. A harmonic type repeats
+    // its contour at twice the frequency; an unclassified one is broadband
+    // noise. Keep the order in sync with SYLLABLE_WEIGHTS in mice.js.
     var SYLLABLE_TYPES = [
-      { f: function (t) { return 0.15 + 0.6 * Math.pow(t, 1.4); } },                              // upward
-      { f: function (t) { return 0.82 - 0.5 * t; } },                                              // downward
-      { f: function (t) { return 0.3 + 0.45 * Math.sin(Math.PI * t); } },                          // chevron
-      { f: function (t) { return 0.78 - 0.42 * Math.sin(Math.PI * t); } },                         // U-shaped
-      { f: function (t) { return t < 0.45 ? 0.28 + 0.06 * t : t > 0.52 ? 0.72 - 0.1 * (t - 0.52) : null; } }, // frequency step
-      { f: function (t) { return 0.48 + 0.2 * Math.sin(2 * Math.PI * 2.2 * t) + 0.1 * t; } },     // complex
-      { f: function (t) { return 0.12 + 0.22 * t; }, harmonic: true },                             // with harmonic
-      { f: function (t) { return t < 0.38 ? 0.3 + 0.9 * t : t > 0.55 ? 0.35 + 0.9 * (t - 0.55) : null; } } // two-syllable
+      { els: [[[0.22, 0.46], [0.5, 0.48], [0.78, 0.45]]] },                                         // flat
+      { els: [[[0.42, 0.88], [0.48, 0.66], [0.56, 0.3]]] },                                         // down
+      { els: [[[0.4, 0.22], [0.47, 0.5], [0.54, 0.72], [0.62, 0.8]]] },                             // up
+      { els: [[[0.22, 0.74], [0.34, 0.42], [0.5, 0.32], [0.66, 0.42], [0.78, 0.7]]] },             // U-shaped
+      { els: [[[0.22, 0.32], [0.36, 0.66], [0.5, 0.74], [0.64, 0.64], [0.78, 0.38]]] },            // inverted U
+      { els: [[[0.14, 0.58], [0.27, 0.32], [0.41, 0.62], [0.54, 0.44], [0.68, 0.7], [0.8, 0.6], [0.87, 0.66]]] }, // complex
+      { els: [[[0.2, 0.28], [0.34, 0.42], [0.48, 0.6]], [[0.48, 0.84], [0.6, 0.88], [0.72, 0.78]]] }, // complex 2
+      { els: [[[0.2, 0.3], [0.25, 0.58], [0.3, 0.86]], [[0.3, 0.74], [0.4, 0.8], [0.48, 0.7]],
+        [[0.48, 0.26], [0.58, 0.4], [0.7, 0.36], [0.8, 0.24]]] },                                    // complex 3
+      { els: [[[0.12, 0.4], [0.24, 0.46], [0.34, 0.52]], [[0.34, 0.62], [0.46, 0.68], [0.56, 0.7]],
+        [[0.56, 0.82], [0.62, 0.86], [0.66, 0.8]], [[0.66, 0.24], [0.76, 0.22]]] },                  // complex 4
+      { els: [[[0.14, 0.28], [0.21, 0.54], [0.27, 0.66]], [[0.27, 0.86], [0.33, 0.9]],
+        [[0.33, 0.72], [0.42, 0.62], [0.5, 0.5]], [[0.5, 0.3], [0.57, 0.36]],
+        [[0.57, 0.66], [0.67, 0.6], [0.74, 0.5]]] },                                                  // complex 5
+      { els: [[[0.14, 0.3], [0.4, 0.24], [0.6, 0.26], [0.86, 0.32]]], harmonic: true },             // harmonic
+      { noise: true }                                                                                  // unclassified
     ];
 
     function paintSyllable(i) {
       var ox = i * SYL, oy = MICE * MOUSE_H;
       var type = SYLLABLE_TYPES[i];
-      function contour(scale, weight, opacityScale) {
-        var seg = [];
-        var segs = [];
-        for (var k = 0; k <= 40; k++) {
-          var t = k / 40;
-          var f = type.f(t);
-          if (f === null) { if (seg.length) segs.push(seg); seg = []; continue; }
-          f = Math.min(0.95, f * scale);
-          // Louder in the middle of the syllable.
-          var amp = opacityScale * (0.45 + 0.55 * Math.sin(Math.PI * Math.min(1, Math.max(0, t))));
-          seg.push(P(ox + 18 + t * (SYL - 36), oy + SYL - 16 - f * (SYL - 32)).concat([amp]));
+      function at(t, f) { return P(ox + 10 + t * (SYL - 20), oy + SYL - 10 - f * (SYL - 20)); }
+      // One element, loudest (thickest) in its middle. Short elements are
+      // resampled, as p5.brush draws a two-point spline faintly.
+      function element(pts, weight) {
+        if (pts.length < 4) {
+          var dense = [];
+          for (var j = 0; j < pts.length - 1; j++) {
+            for (var u = 0; u < 3; u++) {
+              dense.push([pts[j][0] + (pts[j + 1][0] - pts[j][0]) * u / 3, pts[j][1] + (pts[j + 1][1] - pts[j][1]) * u / 3]);
+            }
+          }
+          dense.push(pts[pts.length - 1]);
+          pts = dense;
         }
-        if (seg.length) segs.push(seg);
-        segs.forEach(function (s) {
-          if (s.length < 2) return;
-          brush.set("2B", "#000000", weight);
-          brush.spline(s, 0.4);
-        });
+        var n = pts.length;
+        brush.set("charcoal", "#000000", weight);
+        brush.spline(pts.map(function (q, k) {
+          return at(q[0], q[1]).concat([(0.5 + 0.5 * Math.sin(Math.PI * k / (n - 1))) * random(0.85, 1.1)]);
+        }), 0.5);
       }
       brush.noFill();
-      brush.wiggle(0.3);
-      contour(1, 4.5, 1);
-      if (type.harmonic) contour(2, 3, 0.6);
+      brush.wiggle(0.25);
+      if (type.noise) {
+        // Broadband clicks: short vertical smears and specks.
+        for (var k = 0; k < 6; k++) {
+          var t = random(0.22, 0.78), f = random(0.15, 0.6);
+          element([[t, f], [t + random(-0.02, 0.02), f + random(0.08, 0.3)]], random(0.8, 1.1));
+        }
+        brush.noStroke();
+        brush.fill(0, 0, 0, 200);
+        brush.fillBleed(0.05);
+        for (k = 0; k < 5; k++) brush.circle(at(random(0.2, 0.8), random(0.15, 0.85))[0], at(0, random(0.15, 0.85))[1], random(1.5, 3), 0.5);
+        brush.noFill();
+      } else {
+        type.els.forEach(function (e) { element(e, 1.3); });
+        if (type.harmonic) {
+          type.els.forEach(function (e) { element(e.map(function (q) { return [q[0], 2 * q[1]]; }), 1.1); });
+        }
+      }
       brush.noField();
     }
 
