@@ -1,0 +1,6 @@
+<a href="{{ .Permalink | safeURL }}" class="publication-card relative no-underline pa3 bg-white br1 mb2 flex flex-column raise w-100">
+	<h2 class="f3 b lh-title mb1 primary">{{ .Title }}</h2>
+	<div class="grey-3 lh-title mb4">{{ with .Params.journal }}{{ . }}, {{ end }}{{ .Date.Format "2006" }}</div>
+	<div class="publication-more link b primary mb0">Read more →</div>
+	<canvas class="publication-usv" aria-hidden="true"></canvas>
+</a>

@@ -1,0 +1,16 @@
+<div class="bg-off-white pv4">
+	<div class="ph3 mw8 center">
+
+		<h2 class="f3 b lh-title mb3">Publications</h2>
+
+		<div class="publication-grid flex flex-wrap mb3">
+			{{ range first 6 (where .Data.Pages.ByDate.Reverse "Type" "publications") }}
+				<div class="pr3-m pv2 w-100 w-50-m w-third-l flex">
+					{{ .Render "li" }}
+				</div>
+			{{ end }}
+		</div>
+
+	</div>
+</div>
+<script defer src="/js/usv-card.js"></script>

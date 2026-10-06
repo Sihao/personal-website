@@ -44,6 +44,7 @@
   .w-90-ns { width:  90%; }
   .w-100-ns { width: 100%; }
   .w-third-ns { width: calc(100% / 3); }
+  .w-sixth-ns { width: calc(100% / 6); }
   .w-two-thirds-ns { width: calc(100% / 1.5); }
   .w-auto-ns { width: auto; }
 }

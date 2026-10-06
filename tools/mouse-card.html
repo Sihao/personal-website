@@ -1,0 +1,93 @@
+<!doctype html>
+<!--
+  Renders the small mouse in the corner of publication cards on the landing
+  page, from the painted atlas, with the tints the sketch uses. The
+  syllables rising from its mouth are animated over it by
+  site/static/js/usv-card.js, which needs the snout's position in this
+  image: the tool prints it.
+
+  Serve the repository root with any static server (the atlas cannot be
+  read back from a file:// page), open /tools/mouse-card.html, and save the
+  result as site/static/img/mouse-card.webp.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Mouse card</title>
+  <style>
+    body { margin: 16px; font-family: sans-serif; background: #ffffff; color: #14213d; }
+    img { display: block; margin-top: 16px; border: 1px solid #e5e5e5; }
+    a { color: #14213d; }
+  </style>
+</head>
+<body>
+  <p id="status">Rendering…</p>
+  <script>
+    // Keep in sync with site/static/js/sketches/mice.js.
+    var ATLAS_SRC = "../site/static/img/mice.webp";
+    var MOUSE_W = 400;
+    var MOUSE_H = 280;
+    var LAYER_TINTS = [["#2f2f31", 1, 2], ["#151517", 0.5, 1], ["#202022", 0.9, 1], ["#6a6a6c", 0.3, 1]];
+    var SNOUT = { u: 0.08, v: 0.68 };
+
+    var MOUSE = 0;                // the caller, facing left
+    var WIDTH = 200;              // px of the output, about 2.5x its size on the card
+
+    var img = new Image();
+    img.onload = function () {
+      var layer = document.createElement("canvas");
+      layer.width = MOUSE_W;
+      layer.height = MOUSE_H;
+      var lctx = layer.getContext("2d");
+      var full = document.createElement("canvas");
+      full.width = MOUSE_W;
+      full.height = MOUSE_H;
+      var ctx = full.getContext("2d");
+      LAYER_TINTS.forEach(function (tint, l) {
+        lctx.globalCompositeOperation = "copy";
+        lctx.drawImage(img, l * MOUSE_W, MOUSE * MOUSE_H, MOUSE_W, MOUSE_H, 0, 0, MOUSE_W, MOUSE_H);
+        lctx.globalCompositeOperation = "source-in";
+        lctx.fillStyle = tint[0];
+        lctx.fillRect(0, 0, MOUSE_W, MOUSE_H);
+        ctx.globalAlpha = tint[1];
+        for (var pass = 0; pass < tint[2]; pass++) ctx.drawImage(layer, 0, 0);
+      });
+      // Crop to the painted pixels, with a small margin.
+      var data = ctx.getImageData(0, 0, MOUSE_W, MOUSE_H).data;
+      var x0 = MOUSE_W, y0 = MOUSE_H, x1 = 0, y1 = 0;
+      for (var y = 0; y < MOUSE_H; y++) {
+        for (var x = 0; x < MOUSE_W; x++) {
+          if (data[4 * (y * MOUSE_W + x) + 3] > 8) {
+            x0 = Math.min(x0, x); y0 = Math.min(y0, y);
+            x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+          }
+        }
+      }
+      x0 = Math.max(0, x0 - 4); y0 = Math.max(0, y0 - 4);
+      x1 = Math.min(MOUSE_W - 1, x1 + 4); y1 = Math.min(MOUSE_H - 1, y1 + 4);
+      var w = x1 - x0 + 1, h = y1 - y0 + 1;
+      var out = document.createElement("canvas");
+      out.width = WIDTH;
+      out.height = Math.round(WIDTH * h / w);
+      out.getContext("2d").drawImage(full, x0, y0, w, h, 0, 0, out.width, out.height);
+      var url = out.toDataURL("image/webp", 0.9);
+      window.cardDataURL = url;
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = "mouse-card.webp";
+      var snout = { u: (SNOUT.u * MOUSE_W - x0) / w, v: (SNOUT.v * MOUSE_H - y0) / h };
+      window.cardSnout = snout;
+      link.textContent = "Download mouse-card.webp (" + out.width + " x " + out.height +
+        "); snout at u " + snout.u.toFixed(3) + ", v " + snout.v.toFixed(3) + " (set SNOUT in usv-card.js)";
+      document.getElementById("status").replaceChildren(link);
+      var preview = document.createElement("img");
+      preview.src = url;
+      document.body.appendChild(preview);
+    };
+    img.onerror = function () {
+      document.getElementById("status").textContent = "Could not load " + ATLAS_SRC + "; serve the repository root over HTTP.";
+    };
+    img.src = ATLAS_SRC;
+  </script>
+</body>
+</html>
