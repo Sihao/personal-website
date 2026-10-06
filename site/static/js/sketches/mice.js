@@ -49,6 +49,8 @@
   var SYL_INTERVAL = [0.28, 0.42]; // s between syllable onsets in a bout
   var SYL_SIZE = 0.3;             // syllable size, as a fraction of mouse width
   var TRAVEL = 3.4;               // s for a syllable to reach the other mouse
+  var LEAD = 0.12;                // how far a path runs straight out of the snout and into the ear, as a fraction of the distance between them
+  var KNOT_GAP = 110;             // px between knots along the path
   var SPREAD = 0.35;              // sideways scatter off the path, in syllable sizes
   var LIFE = 2.2;                 // s a syllable lasts when it does not move (reduced motion)
   var WRITE = 0.12;               // s to write a syllable out, left to right
@@ -126,8 +128,8 @@
     var atlas = null;
     var inkAtlases = [];
     var restLayer = null;
-    var paths = [];               // [caller -> listener, listener -> caller]
     var bow = 0;                  // px, how far the paths arch upwards
+    var swing = 0;                // px, sideways swing of a path at each knot
 
     // Places the mice for the frame's shape.
     function layout() {
@@ -140,14 +142,17 @@
           { x: w / 2, y: h * 0.87, w: mw, rot: -0.1, flip: -1 }
         ];
         bow = 0;
+        swing = 0.3 * w;
       } else {
         var mw2 = Math.min(w * 0.4, h * 1.1);
         mice = [
           { x: w * 0.72, y: h * 0.48, w: mw2, rot: 0.08, flip: 1 },
           { x: w * 0.28, y: h * 0.55, w: mw2, rot: -0.1, flip: -1 }
         ];
-        // Face to face, the paths arch over the gap between the mice.
-        bow = -0.45 * h;
+        // Face to face, the mice are too close for the path to wind, so it
+        // arches over the gap between them.
+        bow = -0.35 * h;
+        swing = 0;
       }
       mice.forEach(function (m, i) {
         m.tile = i;
@@ -155,7 +160,6 @@
         m.nextBout = 0;
       });
       syllables = [];
-      paths = [path(0, 1), path(1, 0)];
     }
 
     // Tile fractions of mouse m -> frame coordinates.
@@ -171,15 +175,19 @@
       return { x: -m.flip * Math.cos(m.rot), y: -m.flip * Math.sin(m.rot) };
     }
 
-    // A cubic Bezier from the snout of mouse a to the ear of mouse b. It
-    // leaves the snout in the direction a faces and comes into the ear
-    // from in front of b's head; control points stay inside the frame.
+    // A path from the snout of mouse a to the ear of mouse b: a
+    // Catmull-Rom spline through knots that swing from side to side
+    // across the line between the mice, so the path winds. It leaves the
+    // snout in the direction a faces and comes into the ear from in front
+    // of b's head; every knot stays inside the frame. The swing varies a
+    // little from bout to bout. Returned as a polyline with its cumulative
+    // length, so syllables can move along it at an even pace.
     function path(a, b) {
       var ma = mice[a], mb = mice[b];
       var p0 = fromTile(ma, SNOUT.u, SNOUT.v);
-      var p3 = fromTile(mb, EAR.u, EAR.v);
+      var p1 = fromTile(mb, EAR.u, EAR.v);
       var fa = facing(ma), fb = facing(mb);
-      var len = Math.hypot(p3.x - p0.x, p3.y - p0.y);
+      var len = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
       var margin = ma.w * SYL_SIZE * 0.6;
       function inside(q) {
         return {
@@ -187,22 +195,56 @@
           y: Math.min(p.height - margin, Math.max(margin, q.y))
         };
       }
-      return [p0,
-        inside({ x: p0.x + fa.x * len * 0.45, y: p0.y + fa.y * len * 0.45 + bow }),
-        inside({ x: p3.x + fb.x * len * 0.45, y: p3.y + fb.y * len * 0.45 + bow }),
-        p3];
+      var out = inside({ x: p0.x + fa.x * len * LEAD, y: p0.y + fa.y * len * LEAD });
+      var into = inside({ x: p1.x + fb.x * len * LEAD, y: p1.y + fb.y * len * LEAD });
+      // Unit normal to the line between the lead points; the first swing
+      // goes against the way the path leaves the snout.
+      var dx = into.x - out.x, dy = into.y - out.y, d = Math.hypot(dx, dy) || 1;
+      var nx = -dy / d, ny = dx / d;
+      var side = (fa.x * nx + fa.y * ny) > 0 ? -1 : 1;
+      var amp = swing * p.random(0.8, 1.2);
+      var knots = [p0, out];
+      var n = Math.max(2, Math.round(d / KNOT_GAP));
+      for (var k = 1; k <= n; k++) {
+        var f = k / (n + 1);
+        knots.push(inside({
+          x: out.x + dx * f + nx * side * amp * p.random(0.7, 1.1),
+          y: out.y + dy * f + ny * side * amp * p.random(0.7, 1.1) + bow * Math.sin(Math.PI * f)
+        }));
+        side = -side;
+      }
+      knots.push(into, p1);
+      return polyline(knots);
     }
 
-    // Point and unit normal on a path at q in 0..1.
+    // Samples a Catmull-Rom spline through the knots.
+    function polyline(knots) {
+      var pts = [knots[0]];
+      for (var i = 0; i < knots.length - 1; i++) {
+        var k0 = knots[Math.max(0, i - 1)], k1 = knots[i], k2 = knots[i + 1], k3 = knots[Math.min(knots.length - 1, i + 2)];
+        for (var j = 1; j <= 16; j++) {
+          var t = j / 16, t2 = t * t, t3 = t2 * t;
+          pts.push({
+            x: 0.5 * (2 * k1.x + (-k0.x + k2.x) * t + (2 * k0.x - 5 * k1.x + 4 * k2.x - k3.x) * t2 + (-k0.x + 3 * k1.x - 3 * k2.x + k3.x) * t3),
+            y: 0.5 * (2 * k1.y + (-k0.y + k2.y) * t + (2 * k0.y - 5 * k1.y + 4 * k2.y - k3.y) * t2 + (-k0.y + 3 * k1.y - 3 * k2.y + k3.y) * t3)
+          });
+        }
+      }
+      var cum = [0];
+      for (i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+      return { pts: pts, cum: cum };
+    }
+
+    // Point and unit normal at fraction q of a path's length.
     function along(c, q) {
-      var r = 1 - q;
-      var a = r * r * r, b = 3 * r * r * q, d = 3 * r * q * q, e = q * q * q;
-      var x = a * c[0].x + b * c[1].x + d * c[2].x + e * c[3].x;
-      var y = a * c[0].y + b * c[1].y + d * c[2].y + e * c[3].y;
-      var tx = 3 * r * r * (c[1].x - c[0].x) + 6 * r * q * (c[2].x - c[1].x) + 3 * q * q * (c[3].x - c[2].x);
-      var ty = 3 * r * r * (c[1].y - c[0].y) + 6 * r * q * (c[2].y - c[1].y) + 3 * q * q * (c[3].y - c[2].y);
-      var len = Math.hypot(tx, ty) || 1;
-      return { x: x, y: y, nx: -ty / len, ny: tx / len };
+      var target = q * c.cum[c.cum.length - 1];
+      var i = 1;
+      while (i < c.cum.length - 1 && c.cum[i] < target) i++;
+      var a = c.pts[i - 1], b = c.pts[i];
+      var seg = c.cum[i] - c.cum[i - 1] || 1;
+      var u = Math.min(1, Math.max(0, (target - c.cum[i - 1]) / seg));
+      var tx = b.x - a.x, ty = b.y - a.y, len = Math.hypot(tx, ty) || 1;
+      return { x: a.x + tx * u, y: a.y + ty * u, nx: -ty / len, ny: tx / len };
     }
 
     // Frame coordinates -> tile fractions of mouse m (the mouse faces left
@@ -288,10 +330,11 @@
       var m = mice[i];
       var size = m.w * SYL_SIZE;
       var n = Math.floor(p.random(BOUT[0], BOUT[1] + 1));
+      var route = path(i, 1 - i);
       var onset = t;
       for (var k = 0; k < n; k++) {
         syllables.push({
-          path: i, size: size,
+          path: route, size: size,
           sx: p.random(STRETCH_T[0], STRETCH_T[1]), sy: p.random(STRETCH_F[0], STRETCH_F[1]),
           off: p.random(-SPREAD, SPREAD) * size,
           travel: TRAVEL * p.random(0.9, 1.1),
@@ -396,7 +439,7 @@
           alpha = Math.min(1, f / 0.08) * Math.min(1, (1 - f) / 0.3);
           written = Math.min(1, age / WRITE);
         }
-        var at = along(paths[s.path], q);
+        var at = along(s.path, q);
         // A little smaller as it leaves, full size on arrival.
         var grow = 0.8 + 0.2 * q;
         var w = s.size * s.sx * grow;
