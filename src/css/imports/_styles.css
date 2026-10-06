@@ -48,3 +48,15 @@
   padding: 0px;
   margin: 0px;
 }
+
+/* Publication pages: the painting is a tall, narrow scroll beside the
+   text on wider screens, and a short band above it on phones. */
+.publication-sketch { height: 220px; }
+
+@media (--breakpoint-not-small) {
+  .publication-sketch { height: 600px; }
+  .publication-aside {
+    position: sticky;
+    top: var(--spacing-medium);
+  }
+}

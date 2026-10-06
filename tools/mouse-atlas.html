@@ -1,0 +1,441 @@
+<!doctype html>
+<!--
+  Paints the sprite atlas used by site/static/js/sketches/mice.js.
+
+  Open this file in a browser with WebGL2 and save the result as
+  site/static/img/mice.webp. The atlas is white, with alpha = pigment
+  density, so the sketch can tint each layer with any colour. It holds:
+    - two mice in profile, facing left, in the manner of an ink painting on
+      silk: a caller and a listener. Each mouse is three layers, composited
+      in order: BASE (pale pigment: body, paws, tail), WASH (soft ink
+      markings), LINE (crisp ink: eye, nose, toes, tail rings, dust) and
+      HIGHLIGHT (pale pigment over the ink: ears, eye ring, cheek,
+      whiskers, specks);
+    - SYLLABLES ultrasonic vocalisation syllables, as spectrogram contours
+      (time along x, frequency up), painted in ink.
+
+  Painting is seeded, so the same SEED gives the same atlas.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Mouse atlas</title>
+  <style>
+    body { margin: 16px; font-family: sans-serif; background: #a97d44; color: #14213d; }
+    body > canvas, main > canvas { display: none; }
+    img { display: block; max-width: 100%; margin-bottom: 16px; background: #a97d44; }
+    a { color: #14213d; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.min.js" integrity="sha384-Cs48F1uukMPysq29xNsf/FZL5ZNGsPfi6lDSGOxo6dypVFFiWO9Q3YbRKoXPPBii" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5.brush@2.2.3/dist/p5.brush.js" integrity="sha384-kwWM3zLjD/CdRap70WTKAsSsnuRP+m8UUSUCTvKE0YT9kCV50Lf9T33B819pu4hh" crossorigin="anonymous"></script>
+</head>
+<body>
+  <p id="status">Painting…</p>
+  <script>
+    // Keep in sync with mice.js.
+    var MOUSE_W = 400;            // px, one layer of one mouse
+    var MOUSE_H = 280;
+    var MICE = 2;                 // caller, listener
+    var LAYERS = 4;               // base, wash, line, highlight
+    var SYL = 150;                // px, one syllable tile
+    var SYLLABLES = 8;
+
+    var SEED = 7;
+    var BRUSH_SCALE = 1.2;
+
+    var W = LAYERS * MOUSE_W;
+    var H = MICE * MOUSE_H + SYL;
+
+    // Each layer is softened after painting by mixing in a blurred copy of
+    // itself, as pigment spreads into damp silk: [radius px, mix].
+    var SOFTEN = [[10, 0.75], [9, 0.7], [1.2, 0.2], [5, 0.55]];
+    var SYL_SOFTEN = [3, 0.55];
+
+    // The mice are drawn in a 900 x 680 design space (y down), mapped into
+    // their tiles.
+    var DESIGN_SCALE = 0.44;
+    var origin = [0, 0];
+
+    // Design coordinates -> WEBGL coordinates (origin at the canvas centre).
+    function D(x, y) {
+      return [origin[0] + 12 + (x - 60) * DESIGN_SCALE - W / 2,
+              origin[1] + 14 + (y - 75) * DESIGN_SCALE - H / 2];
+    }
+    // Atlas pixel coordinates -> WEBGL coordinates.
+    function P(x, y) { return [x - W / 2, y - H / 2]; }
+
+    // Closed Catmull-Rom curve through the control points, with its edge
+    // roughened by noise along the normal.
+    function closedCurve(ctrl, perSeg, rough) {
+      var out = [];
+      var n = ctrl.length;
+      var phase = random(1000);
+      for (var i = 0; i < n; i++) {
+        var p0 = ctrl[(i - 1 + n) % n], p1 = ctrl[i], p2 = ctrl[(i + 1) % n], p3 = ctrl[(i + 2) % n];
+        for (var s = 0; s < perSeg; s++) {
+          var t = s / perSeg, t2 = t * t, t3 = t2 * t;
+          var x = 0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
+          var y = 0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
+          out.push([x, y]);
+        }
+      }
+      // Roughen along the normal.
+      var m = out.length;
+      return out.map(function (q, k) {
+        var a = out[(k - 1 + m) % m], b = out[(k + 1) % m];
+        var nx = b[1] - a[1], ny = a[0] - b[0];
+        var len = Math.hypot(nx, ny) || 1;
+        var u = k / m * TWO_PI;
+        var off = rough * ((noise(phase + Math.cos(u), phase + Math.sin(u)) - 0.5) * 2 +
+          0.5 * (noise(phase + 4 * Math.cos(u), phase + 4 * Math.sin(u)) - 0.5) * 2);
+        return [q[0] + nx / len * off, q[1] + ny / len * off];
+      });
+    }
+
+    function ellipsePts(cx, cy, rx, ry, rot) {
+      var pts = [];
+      for (var k = 0; k < 10; k++) {
+        var a = k / 10 * Math.PI * 2;
+        var x = Math.cos(a) * rx, y = Math.sin(a) * ry;
+        pts.push([cx + x * Math.cos(rot) - y * Math.sin(rot), cy + x * Math.sin(rot) + y * Math.cos(rot)]);
+      }
+      return pts;
+    }
+
+    // Points along the arc a0..a1 (rad) of an ellipse [cx, cy, rx, ry, rot],
+    // a little inside its edge.
+    function arcPts(e, a0, a1, n) {
+      var pts = [];
+      for (var k = 0; k <= n; k++) {
+        var a = a0 + (a1 - a0) * k / n;
+        var x = Math.cos(a) * e[2] * 0.88, y = Math.sin(a) * e[3] * 0.9;
+        pts.push([e[0] + x * Math.cos(e[4]) - y * Math.sin(e[4]), e[1] + x * Math.sin(e[4]) + y * Math.cos(e[4])]);
+      }
+      return pts;
+    }
+
+    // Scales control points towards a centre.
+    function towards(ctrl, c, s) {
+      return ctrl.map(function (q) { return [c[0] + (q[0] - c[0]) * s, c[1] + (q[1] - c[1]) * s]; });
+    }
+
+    // Several translucent glazes of one shape, each a little smaller and
+    // closer to `core`, so pigment is densest at the core and the edge is
+    // soft and uneven. Shapes are in design coordinates.
+    function glazes(ctrl, core, o) {
+      o.border = o.border || [0, 0.06];
+      for (var g = 0; g < o.n; g++) {
+        var s = 1 - (1 - o.shrink) * g / Math.max(1, o.n - 1);
+        var jit = o.jitter || 0;
+        var c = [core[0] + random(-jit, jit), core[1] + random(-jit, jit)];
+        var pts = closedCurve(towards(ctrl, c, s), 6, o.rough).map(function (q) { return D(q[0], q[1]); });
+        brush.fill(0, 0, 0, random(o.opacity[0], o.opacity[1]));
+        brush.fillBleed(random(o.bleed[0], o.bleed[1]), "out");
+        brush.fillTexture(random(o.texture[0], o.texture[1]), random(o.border[0], o.border[1]), true);
+        brush.polygon(pts);
+      }
+      brush.noFill();
+    }
+
+    // Tapering band along a curve given by design points, half-widths w0 -> w1.
+    function band(pts, w0, w1) {
+      var left = [], right = [];
+      for (var i = 0; i < pts.length; i++) {
+        var a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+        var nx = b[1] - a[1], ny = a[0] - b[0];
+        var len = Math.hypot(nx, ny) || 1;
+        var w = w0 + (w1 - w0) * i / (pts.length - 1);
+        left.push([pts[i][0] + nx / len * w, pts[i][1] + ny / len * w]);
+        right.push([pts[i][0] - nx / len * w, pts[i][1] - ny / len * w]);
+      }
+      return left.concat(right.reverse());
+    }
+
+    function penStroke(name, weight, pts, curvature) {
+      brush.set(name, "#000000", weight);
+      brush.spline(pts.map(function (q) { return D(q[0], q[1]).concat(q.length > 2 ? [q[2]] : []); }), curvature);
+    }
+
+    // The tail as a sampled quadratic curve, in design coordinates.
+    function tailCurve(a, c, b, n) {
+      var pts = [];
+      for (var i = 0; i <= n; i++) {
+        var t = i / n;
+        pts.push([(1 - t) * (1 - t) * a[0] + 2 * (1 - t) * t * c[0] + t * t * b[0],
+                  (1 - t) * (1 - t) * a[1] + 2 * (1 - t) * t * c[1] + t * t * b[1]]);
+      }
+      return pts;
+    }
+
+    // A crouching mouse in profile, facing left. Shared by both mice; the
+    // markings differ.
+    var BODY = [[95, 478], [118, 535], [200, 560], [300, 575], [400, 585], [470, 578], [560, 585], [650, 565],
+      [730, 515], [785, 420], [785, 290], [720, 160], [600, 95], [470, 90], [380, 140], [300, 240], [200, 315],
+      [130, 370], [100, 425]];
+    var BODY_CORE = [480, 360];
+    var FAR_EAR = [140, 250, 62, 88, -0.4];
+    var NEAR_EAR = [262, 215, 66, 115, 0.1];
+    var EYE = [183, 430, 21, 23];
+    var FORE_PAW = [[325, 560], [375, 560], [398, 612], [378, 632], [340, 628], [318, 598]];
+    var HIND_PAW = [[500, 565], [552, 566], [572, 615], [552, 634], [514, 630], [494, 600]];
+
+    var MICE_SPEC = [
+      // Caller: one dark band from the shoulders, down the neck and round
+      // the eye, as in the reference piebald.
+      {
+        ears: [0, 0],
+        marks: [
+          { ctrl: [[395, 110], [480, 100], [520, 170], [515, 280], [490, 380], [430, 460], [330, 485], [240, 490],
+            [160, 478], [118, 440], [125, 375], [170, 335], [250, 305], [320, 280], [350, 200]],
+            core: [380, 360], n: 6, shrink: 0.45, opacity: [60, 100] },
+          { ctrl: ellipsePts(330, 390, 80, 70, 0.4), core: [330, 390], n: 2, shrink: 0.7, opacity: [50, 80] }
+        ],
+        dust: [[380, 122], [430, 100], [478, 104]]
+      },
+      // Listener: ears pricked, and a dark hood over the head.
+      {
+        ears: [-0.12, 0.2],
+        marks: [
+          { ctrl: [[120, 380], [170, 320], [260, 285], [345, 295], [390, 350], [375, 432], [320, 482], [230, 495],
+            [150, 480], [115, 440]],
+            core: [270, 380], n: 6, shrink: 0.45, opacity: [60, 100] }
+        ],
+        dust: [[200, 300], [290, 276], [365, 305]]
+      }
+    ];
+
+    function paintMouse(m) {
+      var spec = MICE_SPEC[m];
+      var farEar = FAR_EAR.slice(), nearEar = NEAR_EAR.slice();
+      farEar[4] += spec.ears[0];
+      nearEar[4] += spec.ears[0];
+      nearEar[3] *= 1 + spec.ears[1] * 0.3;
+      nearEar[1] -= spec.ears[1] * 30;
+      var tail = tailCurve([700, 520], [800, 535], [905, 615], 12);
+      var i;
+
+      // Base: pale pigment, with a few denser and thinner patches inside.
+      origin = [0, m * MOUSE_H];
+      brush.noStroke();
+      glazes(BODY, BODY_CORE, { n: 5, shrink: 0.82, rough: 7, jitter: 25, opacity: [55, 80], bleed: [0.25, 0.4], texture: [0.2, 0.35] });
+      for (i = 0; i < 3; i++) {
+        var c = [random(300, 700), random(200, 480)];
+        glazes(ellipsePts(c[0], c[1], random(60, 110), random(50, 90), random(TWO_PI)), c,
+          { n: 1, shrink: 1, rough: 10, opacity: [25, 45], bleed: [0.3, 0.45], texture: [0.3, 0.45] });
+      }
+      glazes(FORE_PAW, [355, 585], { n: 2, shrink: 0.7, rough: 3, opacity: [60, 80], bleed: [0.15, 0.25], texture: [0.1, 0.2] });
+      glazes(HIND_PAW, [532, 590], { n: 2, shrink: 0.7, rough: 3, opacity: [60, 80], bleed: [0.15, 0.25], texture: [0.1, 0.2] });
+      glazes(band(tail, 16, 6), [800, 540], { n: 2, shrink: 0.95, rough: 1.5, opacity: [70, 90], bleed: [0.1, 0.2], texture: [0.15, 0.25] });
+
+      // Wash: ink markings, wet into wet, densest at their cores.
+      origin = [MOUSE_W, m * MOUSE_H];
+      brush.noStroke();
+      spec.marks.forEach(function (k) {
+        glazes(k.ctrl, k.core, { n: k.n, shrink: k.shrink, rough: 10, jitter: 25, opacity: k.opacity, bleed: [0.3, 0.45], texture: [0.25, 0.4], border: [0.02, 0.1] });
+      });
+      // A faint shadow along the belly, so the paws stand clear of it.
+      glazes([[250, 545], [460, 560], [620, 550], [600, 585], [450, 592], [270, 580]], [440, 572],
+        { n: 2, shrink: 0.8, rough: 4, opacity: [8, 14], bleed: [0.3, 0.4], texture: [0.2, 0.3] });
+      // Grey down the bridge of the nose.
+      glazes([[108, 395], [160, 390], [170, 462], [125, 482], [100, 452]], [130, 440],
+        { n: 2, shrink: 0.6, rough: 3, opacity: [30, 45], bleed: [0.2, 0.3], texture: [0.2, 0.3] });
+
+      // Line: eye, nose, mouth, toes, tail rings, and a sprinkle of dust
+      // where the ink was flicked onto the back.
+      origin = [2 * MOUSE_W, m * MOUSE_H];
+      brush.noStroke();
+      glazes(ellipsePts(EYE[0], EYE[1], EYE[2], EYE[3], 0), [EYE[0], EYE[1]],
+        { n: 3, shrink: 0.75, rough: 1.2, opacity: [170, 230], bleed: [0.03, 0.08], texture: [0.05, 0.1] });
+      glazes(ellipsePts(102, 482, 9, 7, 0.3), [102, 482], { n: 1, shrink: 1, rough: 1, opacity: [140, 170], bleed: [0.05, 0.1], texture: [0.05, 0.1] });
+      brush.set("dust", "#000000", 2.2);
+      brush.spline(spec.dust.map(function (q) { return D(q[0], q[1]); }), 0.5);
+      brush.wiggle(0.6);
+      penStroke("HB", 0.8, [[114, 528, 0.4], [140, 534, 1], [170, 524, 0.5]], 0.5);
+      [[[336, 612], [328, 622], [320, 628]], [[352, 618], [347, 628], [342, 636]], [[368, 618], [368, 628], [370, 636]],
+       [[384, 612], [390, 620], [398, 626]], [[512, 618], [505, 628], [498, 634]], [[529, 622], [526, 632], [524, 640]],
+       [[546, 621], [548, 631], [552, 639]], [[562, 614], [569, 622], [577, 628]]].forEach(function (t) {
+        penStroke("2H", 0.6, [t[0].concat([0.7]), t[1].concat([0.5]), t[2].concat([0.2])], 0.4);
+      });
+      for (i = 1; i < tail.length - 1; i++) {
+        var a = tail[i - 1], b = tail[i + 1];
+        var nx = b[1] - a[1], ny = a[0] - b[0], len = Math.hypot(nx, ny);
+        var w = 15 - 9 * i / (tail.length - 1);
+        if (random() < 0.25) continue;
+        penStroke("2H", 0.45, [[tail[i][0] + nx / len * w, tail[i][1] + ny / len * w, 0.5],
+          [tail[i][0] - nx / len * w, tail[i][1] - ny / len * w, 0.3]], 0);
+      }
+      brush.noField();
+
+      // Highlight: pale pigment over the ink. The ears stand in front of the
+      // markings, with a rolled rim on the near ear; a pale ring round the
+      // eye; a pale cheek; whiskers; and a sprinkle of pale specks.
+      origin = [3 * MOUSE_W, m * MOUSE_H];
+      brush.noStroke();
+      // Ear glazes gather towards the rim, so the ear is thinner, and the
+      // silk shows through, near its base.
+      glazes(ellipsePts.apply(null, farEar), [farEar[0] - 15, farEar[1] - 25], { n: 4, shrink: 0.7, rough: 5, jitter: 8, opacity: [55, 80], bleed: [0.2, 0.35], texture: [0.25, 0.35] });
+      glazes(ellipsePts.apply(null, nearEar), [nearEar[0] - 15, nearEar[1] - 35], { n: 4, shrink: 0.7, rough: 5, jitter: 8, opacity: [60, 85], bleed: [0.2, 0.35], texture: [0.25, 0.35] });
+      glazes(band(arcPts(nearEar, 2.0, 4.3, 10), 9, 5), [nearEar[0] - 55, nearEar[1]],
+        { n: 2, shrink: 0.95, rough: 1.5, opacity: [80, 110], bleed: [0.1, 0.2], texture: [0.15, 0.25] });
+      glazes([[110, 470], [190, 468], [245, 512], [205, 550], [130, 548]], [170, 505],
+        { n: 2, shrink: 0.6, rough: 4, opacity: [35, 50], bleed: [0.3, 0.4], texture: [0.2, 0.3] });
+      brush.set("marker", "#000000", 1.1);
+      brush.noFill();
+      brush.circle(D(EYE[0], EYE[1])[0], D(EYE[0], EYE[1])[1], 31 * DESIGN_SCALE, 0.3);
+      [[120, 476, 40, 462], [124, 486, 50, 515], [132, 480, 220, 474]].forEach(function (w) {
+        penStroke("2H", 0.5, [[w[0], w[1], 1], [(w[0] + w[2]) / 2, (w[1] + w[3]) / 2 - 6, 0.6], [w[2], w[3], 0.15]], 0.5);
+      });
+      brush.set("dust", "#000000", 3);
+      brush.spline([D(540, 160), D(620, 140), D(700, 200), D(720, 280)], 0.5);
+      brush.noStroke();
+    }
+
+    // Syllable contours: frequency (0 bottom .. 1 top) as a function of
+    // time t in 0..1, null in gaps. `harmonic` adds a fainter contour at
+    // twice the frequency.
+    var SYLLABLE_TYPES = [
+      { f: function (t) { return 0.15 + 0.6 * Math.pow(t, 1.4); } },                              // upward
+      { f: function (t) { return 0.82 - 0.5 * t; } },                                              // downward
+      { f: function (t) { return 0.3 + 0.45 * Math.sin(Math.PI * t); } },                          // chevron
+      { f: function (t) { return 0.78 - 0.42 * Math.sin(Math.PI * t); } },                         // U-shaped
+      { f: function (t) { return t < 0.45 ? 0.28 + 0.06 * t : t > 0.52 ? 0.72 - 0.1 * (t - 0.52) : null; } }, // frequency step
+      { f: function (t) { return 0.48 + 0.2 * Math.sin(2 * Math.PI * 2.2 * t) + 0.1 * t; } },     // complex
+      { f: function (t) { return 0.12 + 0.22 * t; }, harmonic: true },                             // with harmonic
+      { f: function (t) { return t < 0.38 ? 0.3 + 0.9 * t : t > 0.55 ? 0.35 + 0.9 * (t - 0.55) : null; } } // two-syllable
+    ];
+
+    function paintSyllable(i) {
+      var ox = i * SYL, oy = MICE * MOUSE_H;
+      var type = SYLLABLE_TYPES[i];
+      function contour(scale, weight, opacityScale) {
+        var seg = [];
+        var segs = [];
+        for (var k = 0; k <= 40; k++) {
+          var t = k / 40;
+          var f = type.f(t);
+          if (f === null) { if (seg.length) segs.push(seg); seg = []; continue; }
+          f = Math.min(0.95, f * scale);
+          // Louder in the middle of the syllable.
+          var amp = opacityScale * (0.45 + 0.55 * Math.sin(Math.PI * Math.min(1, Math.max(0, t))));
+          seg.push(P(ox + 18 + t * (SYL - 36), oy + SYL - 16 - f * (SYL - 32)).concat([amp]));
+        }
+        if (seg.length) segs.push(seg);
+        segs.forEach(function (s) {
+          if (s.length < 2) return;
+          brush.set("2B", "#000000", weight);
+          brush.spline(s, 0.4);
+        });
+      }
+      brush.noFill();
+      brush.wiggle(0.3);
+      contour(1, 4.5, 1);
+      if (type.harmonic) contour(2, 3, 0.6);
+      brush.noField();
+    }
+
+    function setup() {
+      createCanvas(W, H, WEBGL);
+      pixelDensity(1);
+      randomSeed(SEED);
+      noiseSeed(SEED);
+      background(255);
+      brush.scaleBrushes(BRUSH_SCALE);
+      // Fine, sparse dust. For a spray brush the stroke weight sets how far
+      // the dots scatter, not their size.
+      brush.add("dust", {
+        type: "spray", weight: 0.6, scatter: 8, grain: 6, opacity: 140, spacing: 1.2,
+        pressure: [1, 0.6]
+      });
+      brush.noField();
+      for (var m = 0; m < MICE; m++) paintMouse(m);
+      for (var i = 0; i < SYLLABLES; i++) paintSyllable(i);
+    }
+
+    function ramp(e0, e1, x) {
+      var t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+      return t * t * (3 - 2 * t);
+    }
+
+    // Separable box blur, three passes (close to Gaussian).
+    function boxBlur(src, w, h, r) {
+      var a = Float32Array.from(src), b = new Float32Array(src.length);
+      var R = Math.max(1, Math.round(r));
+      for (var pass = 0; pass < 3; pass++) {
+        for (var dir = 0; dir < 2; dir++) {
+          var n = dir ? h : w, m = dir ? w : h;
+          for (var j = 0; j < m; j++) {
+            var acc = 0, cnt = 0, k;
+            for (k = -R; k <= R; k++) {
+              if (k >= 0 && k < n) { acc += a[dir ? k * w + j : j * w + k]; cnt++; }
+            }
+            for (var i = 0; i < n; i++) {
+              b[dir ? i * w + j : j * w + i] = acc / cnt;
+              var out = i - R, inn = i + R + 1;
+              if (out >= 0) { acc -= a[dir ? out * w + j : j * w + out]; cnt--; }
+              if (inn < n) { acc += a[dir ? inn * w + j : j * w + inn]; cnt++; }
+            }
+          }
+          var tmp = a; a = b; b = tmp;
+        }
+      }
+      return a;
+    }
+
+    // p5.brush composites the painting when setup() returns. Each tile is
+    // read back as density, softened, normalised to its own densest pixel
+    // and faded out at its border, so no sprite carries a seam.
+    var TILES = [];
+    for (var m = 0; m < MICE; m++) {
+      for (var l = 0; l < LAYERS; l++) TILES.push({ x: l * MOUSE_W, y: m * MOUSE_H, w: MOUSE_W, h: MOUSE_H, soften: SOFTEN[l] });
+    }
+    for (var s = 0; s < SYLLABLES; s++) TILES.push({ x: s * SYL, y: MICE * MOUSE_H, w: SYL, h: SYL, soften: SYL_SOFTEN });
+
+    function draw() {
+      noLoop();
+      loadPixels();
+      var d = pixelDensity();
+      var out = document.createElement("canvas");
+      out.width = W;
+      out.height = H;
+      var ctx = out.getContext("2d");
+      var img = ctx.createImageData(W, H);
+      TILES.forEach(function (tile) {
+        var dens = new Float32Array(tile.w * tile.h);
+        var x, y, k;
+        for (y = 0; y < tile.h; y++) {
+          for (x = 0; x < tile.w; x++) {
+            k = 4 * ((tile.y + y) * d * W * d + (tile.x + x) * d);
+            dens[y * tile.w + x] = 1 - (pixels[k] + pixels[k + 1] + pixels[k + 2]) / 765;
+          }
+        }
+        var blurred = boxBlur(dens, tile.w, tile.h, tile.soften[0] / 1.7);
+        var max = 0;
+        for (k = 0; k < dens.length; k++) {
+          x = k % tile.w;
+          y = Math.floor(k / tile.w);
+          var edge = ramp(0, 8, Math.min(x, y, tile.w - 1 - x, tile.h - 1 - y));
+          dens[k] = edge * (dens[k] * (1 - tile.soften[1]) + blurred[k] * tile.soften[1]);
+          max = Math.max(max, dens[k]);
+        }
+        for (k = 0; k < dens.length; k++) {
+          var q = 4 * ((tile.y + Math.floor(k / tile.w)) * W + tile.x + k % tile.w);
+          img.data[q] = img.data[q + 1] = img.data[q + 2] = 255;
+          img.data[q + 3] = Math.round(255 * Math.pow(dens[k] / (max || 1), 0.85));
+        }
+      });
+      ctx.putImageData(img, 0, 0);
+      var url = out.toDataURL("image/webp", 0.9);
+      window.atlasDataURL = url;
+
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = "mice.webp";
+      link.textContent = "Download mice.webp";
+      document.getElementById("status").replaceChildren(link);
+      var preview = document.createElement("img");
+      preview.src = url;
+      document.body.appendChild(preview);
+    }
+  </script>
+</body>
+</html>
