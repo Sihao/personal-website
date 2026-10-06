@@ -52,12 +52,17 @@
 /* Publication cards on the landing page: white, outlined in Prussian
    blue, with a small mouse from the publication's painting in the
    bottom right corner (site/static/img/mouse-card.webp, rendered by
-   tools/mouse-card.html). */
+   tools/mouse-card.html). "Read more" sits on the bottom edge of the
+   padding, level with the bottom of the mouse. */
 .publication-card {
   border: 2px solid var(--prussian-blue);
   padding-right: 6rem;
-  padding-bottom: 2.5rem;
-  background: var(--white) url(/img/mouse-card.webp) no-repeat right 0.75rem bottom 0.75rem / 80px auto;
+  background: var(--white) url(/img/mouse-card.webp) no-repeat right var(--spacing-medium) bottom var(--spacing-medium) / 80px auto;
+}
+
+.publication-more {
+  margin-top: auto;
+  line-height: 1;
 }
 
 /* Publication pages: the painting is a tall, narrow scroll beside the
