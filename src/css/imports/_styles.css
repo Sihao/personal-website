@@ -49,6 +49,12 @@
   margin: 0px;
 }
 
+/* Width of the landing page's card grid and the About block above it:
+   three cards of 15.5rem with 1rem gutters, so that the About paragraph,
+   which spans the second and third cards, keeps the site's 32rem measure
+   for paragraphs; plus 1rem of padding each side. */
+.mw-cards { max-width: 50.5rem; }
+
 /* Publication cards on the landing page: upright golden rectangles,
    white, outlined in Prussian blue, with a small mouse from the
    publication's painting in the bottom right corner
@@ -77,9 +83,11 @@
 }
 
 @media (--breakpoint-medium) {
-  /* Each cell has a right gutter; the row's negative margin takes up the
-     last one, so the cards span the full width. */
-  .publication-grid { margin-right: calc(-1 * var(--spacing-medium)); }
+  /* The grid of the landing page's publication cards, which the About
+     block above them shares. Each cell has a right gutter; the row's
+     negative margin takes up the last one, so the row spans the full
+     width. */
+  .card-grid { margin-right: calc(-1 * var(--spacing-medium)); }
 }
 
 /* Publication pages: the painting is a tall, narrow scroll beside the
