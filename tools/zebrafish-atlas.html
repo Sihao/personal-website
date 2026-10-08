@@ -1,0 +1,305 @@
+<!doctype html>
+<!--
+  Paints the atlas used by site/static/js/zebrafish.js.
+
+  Open this file in a browser with WebGL2 and save the result as
+  site/static/img/zebrafish.webp. The atlas is white, with alpha = pigment
+  density, so zebrafish.js can tint each layer with any colour. It holds:
+    - a larval zebrafish seen from above, straight, head to the right, in
+      FISH_LAYERS tiles of FISH_W x FISH_H: BASE (body, eyes' outline,
+      fins), WASH (eyes and swim bladder), BRAIN (telencephalon, tectal
+      lobes and hindbrain, which light up) and NEUROMASTS (the posterior
+      lateral line's dots along both flanks, which light up). zebrafish.js
+      bends this one painting into each pose of the swim, so every pose
+      has the same brush marks;
+    - GLOWS soft round washes, each GLOW px, for a lit neuromast.
+
+  Painting is seeded, so the same SEED gives the same atlas.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Zebrafish atlas</title>
+  <style>
+    body { margin: 16px; font-family: sans-serif; background: #ffffff; color: #14213d; }
+    body > canvas, main > canvas { display: none; }
+    img { display: block; max-width: 100%; margin-bottom: 16px; background: #14213d; }
+    a { color: #14213d; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.min.js" integrity="sha384-Cs48F1uukMPysq29xNsf/FZL5ZNGsPfi6lDSGOxo6dypVFFiWO9Q3YbRKoXPPBii" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5.brush@2.2.3/dist/p5.brush.js" integrity="sha384-kwWM3zLjD/CdRap70WTKAsSsnuRP+m8UUSUCTvKE0YT9kCV50Lf9T33B819pu4hh" crossorigin="anonymous"></script>
+</head>
+<body>
+  <p id="status">Painting…</p>
+  <script>
+    // Keep in sync with zebrafish.js. Top-level names must not clash with
+    // p5's globals (see lessons.md).
+    var FISH_W = 512;
+    var FISH_H = 260;
+    var FISH_LAYERS = 4;          // base, wash, brain, neuromasts
+    var POSES = 1;                // one straight fish; zebrafish.js bends it
+    var GLOW = 64;
+    var GLOWS = 2;
+
+    var SEED = 3;
+    var BRUSH_SCALE = 1;
+
+    var ATLAS_W = FISH_LAYERS * FISH_W;
+    var ATLAS_H = POSES * FISH_H + GLOW;
+    var MID = 100;                // the fish's midline; the tail bends towards +y
+    var NOSE_X = 472;
+    var TAIL_X = 18;
+
+    // The neuromasts, in fish tile px: along both flanks of the trunk and
+    // the tail, and two at its tip. Keep in sync with zebrafish.js.
+    var NM_X = [345, 300, 255, 210, 165, 120, 82];
+    var NM_TIP = [[52, -3], [48, 4]];
+
+    // Atlas px -> WEBGL coordinates (origin at the centre).
+    function at(x, y) { return [x - ATLAS_W / 2, y - ATLAS_H / 2]; }
+
+    // The straight spine: points every SPINE_STEP px of length back from
+    // the nose, each with its unit normal (towards +y). bendPt and the
+    // masks work on it.
+    var SPINE_STEP = 2;
+    function straightSpine() {
+      var pts = [];
+      for (var x = NOSE_X; x >= TAIL_X - 40; x -= SPINE_STEP) pts.push([x, MID, 0, 1]);
+      return pts;
+    }
+
+    // A point of the straight fish (x, y) -> the bent fish, on a spine.
+    function bendPt(sp, x, y) {
+      var s = Math.max(0, (NOSE_X - x) / SPINE_STEP);
+      var i = Math.min(sp.length - 2, Math.floor(s)), f = s - i;
+      var a = sp[i], b = sp[i + 1], v = y - MID;
+      if (x > NOSE_X) return [a[0] + (x - NOSE_X), a[1] + v];
+      return [a[0] + (b[0] - a[0]) * f + v * (a[2] + (b[2] - a[2]) * f),
+              a[1] + (b[1] - a[1]) * f + v * (a[3] + (b[3] - a[3]) * f)];
+    }
+
+    // Where the shapes go: the tile of one layer of one pose, bent along
+    // that pose's spine. Shapes are given on the straight fish.
+    var tileOrigin = [0, 0], curSpine = null, curPose = 0;
+    function useTile(layer, pose) { tileOrigin = [layer * FISH_W, pose * FISH_H]; curPose = pose; }
+
+    // The outline of every shape in each pose's base layer, bent, in tile
+    // px. p5.brush throws faint spikes off a long outline that is not
+    // convex; draw() keeps pigment only inside these shapes.
+    var masks = [];
+    function place(q) {
+      var b = bendPt(curSpine, q[0], q[1]);
+      return at(tileOrigin[0] + b[0], tileOrigin[1] + b[1]);
+    }
+
+    // Half-width of the body at x (tile px), not counting the eyes: the
+    // head is widest, the trunk tapers to the tail tip.
+    var PROFILE = [[40, 2], [60, 6], [150, 11], [250, 16], [330, 22], [372, 28], [395, 32], [430, 31], [455, 26], [468, 15], [472, 0]];
+    function halfWidth(x) {
+      for (var i = 1; i < PROFILE.length; i++) {
+        if (x <= PROFILE[i][0]) {
+          var a = PROFILE[i - 1], b = PROFILE[i];
+          return a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0]);
+        }
+      }
+      return 0;
+    }
+
+    function ovalPts(cx, cy, rx, ry, rot, n) {
+      var pts = [];
+      n = n || 16;
+      for (var k = 0; k < n; k++) {
+        var a = k / n * Math.PI * 2;
+        var x = Math.cos(a) * rx, y = Math.sin(a) * ry;
+        pts.push([cx + x * Math.cos(rot) - y * Math.sin(rot), cy + x * Math.sin(rot) + y * Math.cos(rot)]);
+      }
+      return pts;
+    }
+
+    // Glazes of one shape (atlas px), each a little smaller and closer to
+    // `core`, so the pigment is densest there and the edge is soft.
+    function glazeShape(pts, core, o) {
+      if (tileOrigin[0] === 0) {
+        (masks[curPose] = masks[curPose] || []).push(pts.map(function (q) { return bendPt(curSpine, q[0], q[1]); }));
+      }
+      for (var g = 0; g < o.n; g++) {
+        var s = 1 - (1 - o.shrink) * g / Math.max(1, o.n - 1);
+        var jit = o.jitter || 0;
+        var c = [core[0] + random(-jit, jit), core[1] + random(-jit, jit)];
+        brush.fill(0, 0, 0, random(o.opacity[0], o.opacity[1]));
+        brush.fillBleed(random(o.bleed[0], o.bleed[1]), "out");
+        brush.fillTexture(random(o.texture[0], o.texture[1]), random(0.05, 0.2), true);
+        brush.polygon(pts.map(function (q) {
+          return place([c[0] + (q[0] - c[0]) * s, c[1] + (q[1] - c[1]) * s]);
+        }));
+      }
+      brush.noFill();
+    }
+
+    // The body's outline in tile px: along one flank from
+    // the tail tip to the nose, and back along the other.
+    function bodyOutline() {
+      var top = [], bottom = [];
+      for (var x = 40; x <= 472; x += 12) {
+        var hw = halfWidth(x);
+        top.push([x, MID - hw]);
+        bottom.push([x, MID + hw]);
+      }
+      return top.concat(bottom.reverse());
+    }
+
+    function paintFish(pose) {
+      curSpine = straightSpine();
+      randomSeed(SEED);
+      noiseSeed(SEED);
+      brush.noStroke();
+      // Base: the body, the pectoral fins and a faint caudal fin.
+      useTile(0, pose);
+      glazeShape(bodyOutline(), [380, MID], { n: 4, shrink: 0.85, jitter: 3, opacity: [55, 80], bleed: [0.12, 0.22], texture: [0.2, 0.35] });
+      [-1, 1].forEach(function (s) {
+        glazeShape(ovalPts(438, MID + s * 34, 21, 16, 0), [438, MID + s * 34], { n: 2, shrink: 0.8, opacity: [60, 85], bleed: [0.1, 0.18], texture: [0.2, 0.3] });
+        // Pectoral fins: from a base on the flank just behind the eyes,
+        // sweeping back and out.
+        glazeShape(ovalPts(374, MID + s * 38, 24, 9, -s * 0.55), [388, MID + s * 31], { n: 2, shrink: 0.85, opacity: [30, 50], bleed: [0.15, 0.25], texture: [0.25, 0.4] });
+      });
+      glazeShape([[30, MID - 14], [80, MID - 6], [80, MID + 6], [30, MID + 14], [18, MID]], [50, MID],
+        { n: 2, shrink: 0.85, opacity: [25, 40], bleed: [0.2, 0.3], texture: [0.3, 0.45] });
+
+      // Wash: the eyes, dark, and the swim bladder.
+      useTile(1, pose);
+      [-1, 1].forEach(function (s) {
+        glazeShape(ovalPts(439, MID + s * 35, 16, 13, 0), [441, MID + s * 36], { n: 3, shrink: 0.6, opacity: [110, 150], bleed: [0.05, 0.1], texture: [0.1, 0.2] });
+      });
+      glazeShape(ovalPts(330, MID, 19, 10, 0), [332, MID], { n: 2, shrink: 0.7, opacity: [50, 75], bleed: [0.1, 0.2], texture: [0.2, 0.35] });
+
+      // Brain: telencephalon, the two tectal lobes and the hindbrain.
+      useTile(2, pose);
+      glazeShape(ovalPts(455, MID, 9, 11, 0), [455, MID], { n: 2, shrink: 0.75, opacity: [80, 110], bleed: [0.08, 0.15], texture: [0.15, 0.25] });
+      [-1, 1].forEach(function (s) {
+        glazeShape(ovalPts(423, MID + s * 12, 17, 11, s * 0.15), [423, MID + s * 12], { n: 3, shrink: 0.7, opacity: [80, 110], bleed: [0.08, 0.15], texture: [0.15, 0.25] });
+      });
+      glazeShape([[408, MID - 11], [383, MID - 9], [358, MID - 4], [352, MID], [358, MID + 4], [383, MID + 9], [408, MID + 11]],
+        [392, MID], { n: 3, shrink: 0.7, opacity: [70, 100], bleed: [0.08, 0.15], texture: [0.15, 0.25] });
+
+      // Neuromasts: small dots just inside each flank.
+      useTile(3, pose);
+      NM_X.forEach(function (x) {
+        [-1, 1].forEach(function (s) {
+          var y = MID + s * Math.max(2, halfWidth(x) - 1.5);
+          glazeShape(ovalPts(x, y, 3.2, 3.2, 0, 10), [x, y], { n: 2, shrink: 0.7, opacity: [110, 150], bleed: [0.04, 0.08], texture: [0.05, 0.1] });
+        });
+      });
+      NM_TIP.forEach(function (q) {
+        glazeShape(ovalPts(q[0], MID + q[1], 2.6, 2.6, 0, 10), [q[0], MID + q[1]], { n: 2, shrink: 0.7, opacity: [110, 150], bleed: [0.04, 0.08], texture: [0.05, 0.1] });
+      });
+    }
+
+    function paintGlow(i) {
+      var cx = i * GLOW + GLOW / 2, cy = POSES * FISH_H + GLOW / 2;
+      brush.noStroke();
+      for (var g = 0; g < 3; g++) {
+        brush.fill(0, 0, 0, random(60, 90));
+        brush.fillBleed(random(0.2, 0.35), "out");
+        brush.fillTexture(random(0.2, 0.35), 0.1, true);
+        brush.polygon(ovalPts(cx + random(-1, 1), cy + random(-1, 1), GLOW * (0.24 - g * 0.05), GLOW * (0.24 - g * 0.05), 0, 14).map(function (q) { return at(q[0], q[1]); }));
+      }
+      brush.noFill();
+    }
+
+    function setup() {
+      createCanvas(ATLAS_W, ATLAS_H, WEBGL);
+      pixelDensity(1);
+      randomSeed(SEED);
+      noiseSeed(SEED);
+      background(255);
+      brush.scaleBrushes(BRUSH_SCALE);
+      brush.noField();
+      for (var p = 0; p < POSES; p++) paintFish(p);
+      for (var i = 0; i < GLOWS; i++) paintGlow(i);
+    }
+
+    function ramp(e0, e1, x) {
+      var t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+      return t * t * (3 - 2 * t);
+    }
+
+    // p5.brush composites the painting when setup() returns. Each tile is
+    // read back as density and faded out at its border, so no sprite
+    // carries a seam from its neighbour. Each layer is normalised to its
+    // densest pixel over all poses, so the poses match in strength; each
+    // glow to its own.
+    function draw() {
+      noLoop();
+      loadPixels();
+      var d = pixelDensity();
+      var tiles = [];
+      for (var p = 0; p < POSES; p++) {
+        for (var l = 0; l < FISH_LAYERS; l++) tiles.push({ x: l * FISH_W, y: p * FISH_H, w: FISH_W, h: FISH_H, group: l, pose: p, gamma: 0.85 });
+      }
+      for (var g = 0; g < GLOWS; g++) tiles.push({ x: g * GLOW, y: POSES * FISH_H, w: GLOW, h: GLOW, group: "glow" + g, gamma: 0.8 });
+
+      var out = document.createElement("canvas");
+      out.width = ATLAS_W;
+      out.height = ATLAS_H;
+      var ctx = out.getContext("2d");
+      var img = ctx.createImageData(ATLAS_W, ATLAS_H);
+      // The masks, softened by a few px, as alpha per tile px.
+      var soft = masks.map(function (shapes) {
+        var c = document.createElement("canvas");
+        c.width = FISH_W;
+        c.height = FISH_H;
+        var m = c.getContext("2d");
+        m.filter = "blur(3px)";
+        m.fillStyle = "#000";
+        m.strokeStyle = "#000";
+        m.lineWidth = 6;
+        shapes.forEach(function (pts) {
+          m.beginPath();
+          pts.forEach(function (q, k) { if (k) m.lineTo(q[0], q[1]); else m.moveTo(q[0], q[1]); });
+          m.closePath();
+          m.fill();
+          m.stroke();
+        });
+        var a = m.getImageData(0, 0, FISH_W, FISH_H).data, out = new Float32Array(FISH_W * FISH_H);
+        for (var k = 0; k < out.length; k++) out[k] = a[4 * k + 3] / 255;
+        return out;
+      });
+      var max = {};
+      tiles.forEach(function (tile) {
+        var dens = tile.dens = new Float32Array(tile.w * tile.h);
+        for (var y = 0; y < tile.h; y++) {
+          for (var x = 0; x < tile.w; x++) {
+            var k = 4 * ((tile.y + y) * d * ATLAS_W * d + (tile.x + x) * d);
+            var v = (1 - (pixels[k] + pixels[k + 1] + pixels[k + 2]) / 765) *
+              ramp(0, 3, Math.min(x, y, tile.w - 1 - x, tile.h - 1 - y));
+            if (tile.pose !== undefined) v *= soft[tile.pose][y * tile.w + x];
+            dens[y * tile.w + x] = v;
+            max[tile.group] = Math.max(max[tile.group] || 0, v);
+          }
+        }
+      });
+      tiles.forEach(function (tile) {
+        for (var y = 0; y < tile.h; y++) {
+          for (var x = 0; x < tile.w; x++) {
+            var q = 4 * ((tile.y + y) * ATLAS_W + tile.x + x);
+            img.data[q] = img.data[q + 1] = img.data[q + 2] = 255;
+            img.data[q + 3] = Math.round(255 * Math.pow(tile.dens[y * tile.w + x] / (max[tile.group] || 1), tile.gamma));
+          }
+        }
+      });
+      ctx.putImageData(img, 0, 0);
+      var url = out.toDataURL("image/webp", 0.9);
+      window.atlasDataURL = url;
+
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = "zebrafish.webp";
+      link.textContent = "Download zebrafish.webp";
+      document.getElementById("status").replaceChildren(link);
+      var preview = document.createElement("img");
+      preview.src = url;
+      document.body.appendChild(preview);
+    }
+  </script>
+</body>
+</html>

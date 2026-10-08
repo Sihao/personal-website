@@ -1,0 +1,409 @@
+<!doctype html>
+<!--
+  Paints the atlas of the computer that calls in place of a mouse, used by
+  site/static/js/sketches/mice.js (sketchVariant: computer) and, through
+  tools/mouse-card.html, by site/static/js/usv-card.js.
+
+  Open this file in a browser with WebGL2 and save the result as
+  site/static/img/computer.webp. Its layout is one mouse row of
+  site/static/img/mice.webp (tools/mouse-atlas.html), so the sketch can put
+  it in the caller's place: four layers, each a MOUSE_W x MOUSE_H tile,
+  white with alpha = pigment density, composited in order: BASE (the
+  silhouette: case, ears, feet, cable), WASH (darker pools on the side and
+  the top), LINE (edges and drive slot) and HIGHLIGHT (a rim on the near
+  ear).
+
+  The computer is a cartoon of an old all-in-one machine, sitting like the
+  mouse in profile and facing left, with round mouse ears on its top, the
+  screen for a face and its cable for a tail. The screen is left as
+  blank paper, to keep the face minimal.
+
+  Painting is seeded, so the same SEED gives the same atlas.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Computer atlas</title>
+  <style>
+    body { margin: 16px; font-family: sans-serif; background: #ffffff; color: #14213d; }
+    body > canvas, main > canvas { display: none; }
+    img { display: block; max-width: 100%; margin-bottom: 16px; background: #ffffff; }
+    a { color: #14213d; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.min.js" integrity="sha384-Cs48F1uukMPysq29xNsf/FZL5ZNGsPfi6lDSGOxo6dypVFFiWO9Q3YbRKoXPPBii" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5.brush@2.2.3/dist/p5.brush.js" integrity="sha384-kwWM3zLjD/CdRap70WTKAsSsnuRP+m8UUSUCTvKE0YT9kCV50Lf9T33B819pu4hh" crossorigin="anonymous"></script>
+</head>
+<body>
+  <p id="status">Painting…</p>
+  <script>
+    // Keep in sync with mice.js and tools/mouse-atlas.html.
+    var MOUSE_W = 400;            // px, one layer
+    var MOUSE_H = 280;
+    var LAYERS = 4;               // base, wash, line, highlight
+
+    var SEED = 11;
+    var BRUSH_SCALE = 1.2;
+
+    var W = LAYERS * MOUSE_W;
+    var H = MOUSE_H;
+
+    // As in tools/mouse-atlas.html: [blur radius px, mix] per layer.
+    var SOFTEN = [[8, 0.7], [8, 0.65], [1, 0.15], [4, 0.5]];
+
+
+    // The mice are drawn in a 900 x 680 design space (y down), mapped into
+    // their tiles.
+    var DESIGN_SCALE = 0.44;
+    var origin = [0, 0];
+
+    // Design coordinates -> WEBGL coordinates (origin at the canvas middle).
+    function D(x, y) {
+      return [origin[0] + 30 + (x - 60) * DESIGN_SCALE - W / 2,
+              origin[1] + 14 + (y - 75) * DESIGN_SCALE - H / 2];
+    }
+    // Atlas pixel coordinates -> WEBGL coordinates.
+    function P(x, y) { return [x - W / 2, y - H / 2]; }
+
+    // Closed Catmull-Rom curve through the control points, with its edge
+    // roughened by noise along the normal.
+    function closedCurve(ctrl, perSeg, rough) {
+      var out = [];
+      var n = ctrl.length;
+      var phase = random(1000);
+      for (var i = 0; i < n; i++) {
+        var p0 = ctrl[(i - 1 + n) % n], p1 = ctrl[i], p2 = ctrl[(i + 1) % n], p3 = ctrl[(i + 2) % n];
+        for (var s = 0; s < perSeg; s++) {
+          var t = s / perSeg, t2 = t * t, t3 = t2 * t;
+          var x = 0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
+          var y = 0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
+          out.push([x, y]);
+        }
+      }
+      // Roughen along the normal.
+      var m = out.length;
+      return out.map(function (q, k) {
+        var a = out[(k - 1 + m) % m], b = out[(k + 1) % m];
+        var nx = b[1] - a[1], ny = a[0] - b[0];
+        var len = Math.hypot(nx, ny) || 1;
+        var u = k / m * TWO_PI;
+        var off = rough * ((noise(phase + Math.cos(u), phase + Math.sin(u)) - 0.5) * 2 +
+          0.5 * (noise(phase + 4 * Math.cos(u), phase + 4 * Math.sin(u)) - 0.5) * 2);
+        return [q[0] + nx / len * off, q[1] + ny / len * off];
+      });
+    }
+
+    function ellipsePts(cx, cy, rx, ry, rot) {
+      var pts = [];
+      for (var k = 0; k < 10; k++) {
+        var a = k / 10 * Math.PI * 2;
+        var x = Math.cos(a) * rx, y = Math.sin(a) * ry;
+        pts.push([cx + x * Math.cos(rot) - y * Math.sin(rot), cy + x * Math.sin(rot) + y * Math.cos(rot)]);
+      }
+      return pts;
+    }
+
+    // Points along the arc a0..a1 (rad) of an ellipse [cx, cy, rx, ry, rot],
+    // a little inside its edge.
+    function arcPts(e, a0, a1, n) {
+      var pts = [];
+      for (var k = 0; k <= n; k++) {
+        var a = a0 + (a1 - a0) * k / n;
+        var x = Math.cos(a) * e[2] * 0.88, y = Math.sin(a) * e[3] * 0.9;
+        pts.push([e[0] + x * Math.cos(e[4]) - y * Math.sin(e[4]), e[1] + x * Math.sin(e[4]) + y * Math.cos(e[4])]);
+      }
+      return pts;
+    }
+
+    // Scales control points towards a middle.
+    function towards(ctrl, c, s) {
+      return ctrl.map(function (q) { return [c[0] + (q[0] - c[0]) * s, c[1] + (q[1] - c[1]) * s]; });
+    }
+
+    // Several translucent glazes of one shape, each a little smaller and
+    // closer to `core`, so pigment is densest at the core and the edge is
+    // soft and uneven. Shapes are in design coordinates.
+    function glazes(ctrl, core, o) {
+      o.border = o.border || [0, 0.06];
+      for (var g = 0; g < o.n; g++) {
+        var s = 1 - (1 - o.shrink) * g / Math.max(1, o.n - 1);
+        var jit = o.jitter || 0;
+        var c = [core[0] + random(-jit, jit), core[1] + random(-jit, jit)];
+        var pts = closedCurve(towards(ctrl, c, s), 6, o.rough).map(function (q) { return D(q[0], q[1]); });
+        brush.fill(0, 0, 0, random(o.opacity[0], o.opacity[1]));
+        brush.fillBleed(random(o.bleed[0], o.bleed[1]), "out");
+        brush.fillTexture(random(o.texture[0], o.texture[1]), random(o.border[0], o.border[1]), true);
+        brush.polygon(pts);
+      }
+      brush.noFill();
+    }
+
+    // Tapering band along a curve given by design points, half-widths w0 -> w1.
+    function band(pts, w0, w1) {
+      var left = [], right = [];
+      for (var i = 0; i < pts.length; i++) {
+        var a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+        var nx = b[1] - a[1], ny = a[0] - b[0];
+        var len = Math.hypot(nx, ny) || 1;
+        var w = w0 + (w1 - w0) * i / (pts.length - 1);
+        left.push([pts[i][0] + nx / len * w, pts[i][1] + ny / len * w]);
+        right.push([pts[i][0] - nx / len * w, pts[i][1] - ny / len * w]);
+      }
+      return left.concat(right.reverse());
+    }
+
+    function penStroke(name, weight, pts, curvature) {
+      brush.set(name, "#000000", weight);
+      brush.spline(pts.map(function (q) { return D(q[0], q[1]).concat(q.length > 2 ? [q[2]] : []); }), curvature);
+    }
+
+    // The tail as a sampled quadratic curve, in design coordinates.
+    function tailCurve(a, c, b, n) {
+      var pts = [];
+      for (var i = 0; i <= n; i++) {
+        var t = i / n;
+        pts.push([(1 - t) * (1 - t) * a[0] + 2 * (1 - t) * t * c[0] + t * t * b[0],
+                  (1 - t) * (1 - t) * a[1] + 2 * (1 - t) * t * c[1] + t * t * b[1]]);
+      }
+      return pts;
+    }
+
+    // Design coordinates -> pixels within a tile.
+    function tilePx(x, y) { return [30 + (x - 60) * DESIGN_SCALE, 14 + (y - 75) * DESIGN_SCALE]; }
+
+    // A polygon with rounded corners of radius r, as dense points, so the
+    // Catmull-Rom curve through them keeps its straight sides.
+    function rounded(poly, r) {
+      var out = [], n = poly.length;
+      for (var i = 0; i < n; i++) {
+        var a = poly[(i - 1 + n) % n], b = poly[i], c = poly[(i + 1) % n];
+        var la = Math.hypot(a[0] - b[0], a[1] - b[1]), lc = Math.hypot(c[0] - b[0], c[1] - b[1]);
+        var ra = Math.min(r, la / 2), rc = Math.min(r, lc / 2);
+        var p0 = [b[0] + (a[0] - b[0]) * ra / la, b[1] + (a[1] - b[1]) * ra / la];
+        var p2 = [b[0] + (c[0] - b[0]) * rc / lc, b[1] + (c[1] - b[1]) * rc / lc];
+        // Quadratic corner through the vertex, then the straight side.
+        for (var k = 0; k < 4; k++) {
+          var t = k / 4;
+          out.push([(1 - t) * (1 - t) * p0[0] + 2 * (1 - t) * t * b[0] + t * t * p2[0],
+                    (1 - t) * (1 - t) * p0[1] + 2 * (1 - t) * t * b[1] + t * t * p2[1]]);
+        }
+        var q = [b[0] + (c[0] - b[0]) * (lc - rc) / lc, b[1] + (c[1] - b[1]) * (lc - rc) / lc];
+        for (k = 0; k < 3; k++) {
+          t = k / 3;
+          out.push([p2[0] + (q[0] - p2[0]) * t, p2[1] + (q[1] - p2[1]) * t]);
+        }
+      }
+      return out;
+    }
+
+    function boxPts(x0, y0, x1, y1) { return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]; }
+
+    // The case in an oblique view: the front face, and the top and the
+    // side going behind along CASE_DEPTH.
+    var CASE_FRONT = boxPts(110, 165, 420, 560);
+    var CASE_DEPTH = [260, -40];
+    function behind(q) { return [q[0] + CASE_DEPTH[0], q[1] + CASE_DEPTH[1]]; }
+    var CASE_TOP = [CASE_FRONT[0], CASE_FRONT[1], behind(CASE_FRONT[1]), behind(CASE_FRONT[0])];
+    var CASE_SIDE = [CASE_FRONT[1], behind(CASE_FRONT[1]), behind(CASE_FRONT[2]), CASE_FRONT[2]];
+    var OUTLINE = [CASE_FRONT[0], behind(CASE_FRONT[0]), behind(CASE_FRONT[1]), behind(CASE_FRONT[2]), CASE_FRONT[2], CASE_FRONT[3]];
+    var DISPLAY = [145, 200, 385, 410];          // x0, y0, x1, y1
+    var DISPLAY_R = 30;
+    var FAR_EAR = [200, 150, 50, 58, -0.35];    // cx, cy, rx, ry, rot
+    var NEAR_EAR = [330, 148, 58, 66, 0.15];
+
+    function middle(poly) {
+      var x = 0, y = 0;
+      poly.forEach(function (q) { x += q[0]; y += q[1]; });
+      return [x / poly.length, y / poly.length];
+    }
+
+    function paintComputer() {
+      var cable = tailCurve([660, 470], [790, 520], [860, 600], 14);
+      var i;
+
+      // Base: the whole silhouette in one pigment.
+      origin = [0, 0];
+      brush.noStroke();
+      glazes(rounded(OUTLINE, 34), [400, 340], { n: 5, shrink: 0.84, rough: 4, jitter: 20, opacity: [55, 80], bleed: [0.22, 0.35], texture: [0.2, 0.35] });
+      for (i = 0; i < 3; i++) {
+        var c = [random(300, 640), random(200, 480)];
+        glazes(ellipsePts(c[0], c[1], random(60, 100), random(50, 80), random(TWO_PI)), c,
+          { n: 1, shrink: 1, rough: 8, opacity: [25, 45], bleed: [0.3, 0.45], texture: [0.3, 0.45] });
+      }
+      glazes(ellipsePts.apply(null, FAR_EAR), [FAR_EAR[0] - 10, FAR_EAR[1] - 18], { n: 4, shrink: 0.7, rough: 4, jitter: 6, opacity: [50, 75], bleed: [0.2, 0.35], texture: [0.25, 0.35] });
+      glazes(ellipsePts.apply(null, NEAR_EAR), [NEAR_EAR[0] - 10, NEAR_EAR[1] - 22], { n: 4, shrink: 0.7, rough: 4, jitter: 6, opacity: [55, 80], bleed: [0.2, 0.35], texture: [0.25, 0.35] });
+      // Feet: two under the front, one under the behind.
+      [[140, 545, 215, 585], [315, 545, 390, 585], [590, 495, 655, 540]].forEach(function (f) {
+        glazes(rounded(boxPts(f[0], f[1], f[2], f[3]), 14), [(f[0] + f[2]) / 2, (f[1] + f[3]) / 2],
+          { n: 2, shrink: 0.9, rough: 2, opacity: [60, 85], bleed: [0.12, 0.2], texture: [0.15, 0.25] });
+      });
+      glazes(band(cable, 9, 7), [780, 530], { n: 2, shrink: 0.95, rough: 1.2, opacity: [70, 90], bleed: [0.1, 0.18], texture: [0.15, 0.25] });
+      // The plug at the end of the cable.
+      glazes(rounded([[848, 590], [878, 575], [895, 610], [865, 625]], 6), [870, 600],
+        { n: 2, shrink: 0.9, rough: 1, opacity: [70, 90], bleed: [0.1, 0.15], texture: [0.15, 0.25] });
+
+      // Wash: the side in shade, the top a little less, and the chin
+      // under the screen.
+      origin = [MOUSE_W, 0];
+      brush.noStroke();
+      glazes(rounded(CASE_SIDE, 26), middle(CASE_SIDE), { n: 5, shrink: 0.6, rough: 6, jitter: 15, opacity: [55, 90], bleed: [0.25, 0.4], texture: [0.25, 0.4], border: [0.02, 0.1] });
+      glazes(rounded(CASE_TOP, 20), middle(CASE_TOP), { n: 2, shrink: 0.7, rough: 5, opacity: [35, 55], bleed: [0.25, 0.4], texture: [0.25, 0.4] });
+      glazes(rounded(boxPts(120, 440, 410, 550), 24), [265, 500], { n: 2, shrink: 0.75, rough: 5, opacity: [25, 40], bleed: [0.3, 0.45], texture: [0.3, 0.45] });
+
+      // Line: the case's edges and the drive slot. The screen has no pen
+      // line; its edge is the pooled rim (screenRim).
+      origin = [2 * MOUSE_W, 0];
+      brush.wiggle(0.4);
+      penStroke("HB", 0.9, [[CASE_FRONT[1][0], CASE_FRONT[1][1] + 30], [CASE_FRONT[1][0] + 2, 360], [CASE_FRONT[2][0], CASE_FRONT[2][1] - 30]], 0.3);
+      penStroke("HB", 0.8, [[CASE_FRONT[0][0] + 30, CASE_FRONT[0][1] - 1], [265, CASE_FRONT[0][1] + 1], [CASE_FRONT[1][0] - 30, CASE_FRONT[1][1]]], 0.3);
+      penStroke("HB", 1, [[265, 478], [320, 477], [375, 479]], 0.3);
+      brush.noField();
+
+      // Highlight: a rim on the near ear and a bloom on the side.
+      origin = [3 * MOUSE_W, 0];
+      brush.noStroke();
+      glazes(band(arcPts(NEAR_EAR, 2.0, 4.3, 10), 8, 5), [NEAR_EAR[0] - 45, NEAR_EAR[1]],
+        { n: 2, shrink: 0.95, rough: 1.5, opacity: [70, 100], bleed: [0.1, 0.2], texture: [0.15, 0.25] });
+      var bloom = [random(500, 600), random(250, 400)];
+      glazes(ellipsePts(bloom[0], bloom[1], random(40, 70), random(35, 60), random(TWO_PI)), bloom,
+        { n: 2, shrink: 0.6, rough: 8, opacity: [35, 55], bleed: [0.35, 0.5], texture: [0.3, 0.45] });
+    }
+
+    function setup() {
+      createCanvas(W, H, WEBGL);
+      pixelDensity(1);
+      randomSeed(SEED);
+      noiseSeed(SEED);
+      background(255);
+      brush.scaleBrushes(BRUSH_SCALE);
+      brush.noField();
+      paintComputer();
+    }
+
+    function ramp(e0, e1, x) {
+      var t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+      return t * t * (3 - 2 * t);
+    }
+
+    // Separable box blur, three passes (close to Gaussian).
+    function boxBlur(src, w, h, r) {
+      var a = Float32Array.from(src), b = new Float32Array(src.length);
+      var R = Math.max(1, Math.round(r));
+      for (var pass = 0; pass < 3; pass++) {
+        for (var dir = 0; dir < 2; dir++) {
+          var n = dir ? h : w, m = dir ? w : h;
+          for (var j = 0; j < m; j++) {
+            var acc = 0, cnt = 0, k;
+            for (k = -R; k <= R; k++) {
+              if (k >= 0 && k < n) { acc += a[dir ? k * w + j : j * w + k]; cnt++; }
+            }
+            for (var i = 0; i < n; i++) {
+              b[dir ? i * w + j : j * w + i] = acc / cnt;
+              var out = i - R, inn = i + R + 1;
+              if (out >= 0) { acc -= a[dir ? out * w + j : j * w + out]; cnt--; }
+              if (inn < n) { acc += a[dir ? inn * w + j : j * w + inn]; cnt++; }
+            }
+          }
+          var tmp = a; a = b; b = tmp;
+        }
+      }
+      return a;
+    }
+
+    // The screen, as a soft-edged mask in tile px, 1 inside: the base and
+    // the wash are lifted out of it, so it stays paper. The outline is
+    // roughened and the lift is uneven, as when wet paint is blotted off,
+    // so the edge reads as a brush edge and not a cut.
+    function screenMask() {
+      var c = document.createElement("canvas");
+      c.width = MOUSE_W;
+      c.height = MOUSE_H;
+      var ctx = c.getContext("2d");
+      var s = DISPLAY, inset = 4;
+      var outline = closedCurve(rounded(boxPts(s[0] + inset, s[1] + inset, s[2] - inset, s[3] - inset), DISPLAY_R), 6, 7);
+      ctx.filter = "blur(4px)";
+      ctx.fillStyle = "#000";
+      ctx.beginPath();
+      outline.forEach(function (q, k) {
+        var p = tilePx(q[0], q[1]);
+        if (k) ctx.lineTo(p[0], p[1]); else ctx.moveTo(p[0], p[1]);
+      });
+      ctx.closePath();
+      ctx.fill();
+      var data = ctx.getImageData(0, 0, MOUSE_W, MOUSE_H).data;
+      var mask = new Float32Array(MOUSE_W * MOUSE_H);
+      for (var k = 0; k < mask.length; k++) {
+        var x = k % MOUSE_W, y = Math.floor(k / MOUSE_W);
+        mask[k] = data[4 * k + 3] / 255 * (0.95 + 0.05 * noise(x * 0.06, y * 0.06, 7));
+      }
+      return mask;
+    }
+
+    // Where the wash meets the lifted screen, pigment pools into a darker,
+    // uneven rim just outside the edge: 0..1 in tile px.
+    function screenRim(mask) {
+      var wide = boxBlur(mask, MOUSE_W, MOUSE_H, 5);
+      var rim = new Float32Array(mask.length);
+      for (var k = 0; k < mask.length; k++) {
+        var x = k % MOUSE_W, y = Math.floor(k / MOUSE_W);
+        rim[k] = Math.max(0, wide[k] - mask[k]) * (0.5 + noise(x * 0.04, y * 0.04, 13));
+      }
+      return rim;
+    }
+
+    // As in tools/mouse-atlas.html: each tile is read behind as density,
+    // softened, normalised to its own densest pixel and faded out at its
+    // border.
+    function draw() {
+      noLoop();
+      loadPixels();
+      var d = pixelDensity();
+      var mask = screenMask();
+      var rim = screenRim(mask);
+      var RIM = [0.2, 0.45];      // pooled pigment at the screen edge, per layer
+      var out = document.createElement("canvas");
+      out.width = W;
+      out.height = H;
+      var ctx = out.getContext("2d");
+      var img = ctx.createImageData(W, H);
+      for (var l = 0; l < LAYERS; l++) {
+        var tile = { x: l * MOUSE_W, y: 0, w: MOUSE_W, h: MOUSE_H, soften: SOFTEN[l] };
+        var dens = new Float32Array(tile.w * tile.h);
+        var x, y, k;
+        for (y = 0; y < tile.h; y++) {
+          for (x = 0; x < tile.w; x++) {
+            k = 4 * ((tile.y + y) * d * W * d + (tile.x + x) * d);
+            dens[y * tile.w + x] = 1 - (pixels[k] + pixels[k + 1] + pixels[k + 2]) / 765;
+          }
+        }
+        var blurred = boxBlur(dens, tile.w, tile.h, tile.soften[0] / 1.7);
+        var max = 0;
+        for (k = 0; k < dens.length; k++) {
+          x = k % tile.w;
+          y = Math.floor(k / tile.w);
+          var edge = ramp(0, 8, Math.min(x, y, tile.w - 1 - x, tile.h - 1 - y));
+          dens[k] = edge * (dens[k] * (1 - tile.soften[1]) + blurred[k] * tile.soften[1]);
+          if (l < 2) dens[k] = dens[k] * (1 - mask[k]) + RIM[l] * rim[k];
+          max = Math.max(max, dens[k]);
+        }
+        for (k = 0; k < dens.length; k++) {
+          var q = 4 * ((tile.y + Math.floor(k / tile.w)) * W + tile.x + k % tile.w);
+          img.data[q] = img.data[q + 1] = img.data[q + 2] = 255;
+          img.data[q + 3] = Math.round(255 * Math.pow(dens[k] / (max || 1), 0.85));
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      var url = out.toDataURL("image/webp", 0.9);
+      window.atlasDataURL = url;
+
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = "computer.webp";
+      link.textContent = "Download computer.webp";
+      document.getElementById("status").replaceChildren(link);
+      var preview = document.createElement("img");
+      preview.src = url;
+      document.body.appendChild(preview);
+    }
+  </script>
+</body>
+</html>

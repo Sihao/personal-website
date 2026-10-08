@@ -1,6 +1,9 @@
 {{ define "main" }}
 
-{{ partial "p5-sketch" (dict "name" "washes" "page" . "height" 220 "label" "Abstract watercolour washes" "caption" "image inspired by Alejandro Campos, <a class=\"grey-3\" href=\"https://verse.works/exhibitions/fugaatientas-imperfections\"><em>Fuga a tientas</em></a>") }}
+<div data-parallax style="--parallax-rate: 0.9">
+{{ partial "p5-sketch" (dict "name" "washes" "page" . "class" "hero-under-header" "label" "Abstract watercolour washes" "caption" "image inspired by Alejandro Campos, <a class=\"grey-3\" href=\"https://verse.works/exhibitions/fugaatientas-imperfections\"><em>Fuga a tientas</em></a>") }}
+</div>
+<script defer src="/js/parallax.js"></script>
 
 
 {{ partial "short-text" .Params.blurb }}

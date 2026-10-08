@@ -21,16 +21,19 @@
 	/* Typography */
 	--font-family: Nunito Sans, -apple-system, BlinkMacSystemFont, 'avenir next', avenir, helvetica, 'helvetica neue', ubuntu, roboto, noto, 'segoe ui', arial, sans-serif;
 	--font-mono: Fira Mono, monospace;
-	--font-header: Libre Franklin, sans-serif;
-	--font-paragraph: Libre Baskerville, serif;
+	--font-header: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+	--font-paragraph: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+	--font-display: Lora, Georgia, serif;
 	--line-height: 1.5;
+	--line-height-text: 1.6;
 
-	--font-size: 18px;
-	--font-size-m: 20px;
-	--font-size-l: 22px;
+	--font-size: 15px;
+	--font-size-m: 16px;
+	--font-size-l: 16px;
 
 	--body-font-weight: 400;
-	--bold-font-weight: 700;
+	--bold-font-weight: 500;
+	--display-font-weight: 500;  /* Lora: headings and the wordmark */
 
 	/* Sizing */
 	--spacing-none: 0;

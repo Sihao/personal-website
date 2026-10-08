@@ -1,16 +1,29 @@
-<nav class="overflow-x-scroll overflow-x-visible-ns flex justify-between items-center center bg-prussian-blue divider-accent relative">
+{{/* On the home page the header is see-through and as tall as the painting
+     under it, which runs up behind it; the bar, holding the logotype and the
+     menu button, stays at the top of the window until the painting's foot
+     reaches it, then leaves with it. The painting sizes itself below the bar
+     (data-sketch-over) and keeps its large light blots away from the
+     logotype and the menu button (data-sketch-clear); both are read by
+     site/static/js/sketches/washes.js. */}}
+<header class="site-header{{ if .IsHome }} site-header--over{{ end }}">
+<nav class="site-nav flex justify-between items-center bg-prussian-blue divider-accent" aria-label="Main" data-sketch-over>
 
-	<!-- Logo -->
-	<strong>
-		<a href="/" class="pa3 db mr4 h-100 w4 flex-none no-underline f3 orange">
-			<h1>SIHAO LU</h1>
-		</a>
-	</strong>
-	<!-- Primary Nav -->
-	<ul class="flex b alabaster-grey">
-		<li><a href="/publications/" class="pa3 no-underline db">Publications</a></li>
-
-	</ul>
+	<!-- Logo: on its own plane, hanging from the bar over the page below -->
+	<a href="/" class="logotype-panel no-underline" data-sketch-clear="10">
+		<h1 class="wordmark"><span class="clip">Sihao Lu</span></h1>
+	</a>
+	<!-- Room for the logotype -->
+	<div class="logotype-space flex-none" aria-hidden="true"></div>
+	<!-- Menu: three watercolour strokes (tools/menu-icon.html), opening a drawer
+	     as tall as the home page's painting; site/static/js/menu.js opens it -->
+	<div class="site-menu">
+		<button type="button" class="menu-button" data-sketch-clear="8" aria-expanded="false" aria-controls="site-menu-list" aria-label="Menu">
+			<span class="menu-icon" aria-hidden="true"></span>
+		</button>
+		<ul id="site-menu-list" class="menu-list">
+			<li><a href="/#publications" class="no-underline db">Publications</a></li>
+		</ul>
+	</div>
 
 </nav>
-<hr class="hr-divider-accent">
+</header>

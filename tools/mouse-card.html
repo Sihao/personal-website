@@ -9,6 +9,11 @@
   Serve the repository root with any static server (the atlas cannot be
   read back from a file:// page), open /tools/mouse-card.html, and save the
   result as site/static/img/mouse-card.webp.
+
+  /tools/mouse-card.html?mouse=computer renders the cartoon computer from
+  site/static/img/computer.webp (tools/computer-atlas.html) instead; save
+  it as site/static/img/computer-card.webp. The tool also prints its ears
+  in the output's px, for usv-card.js.
 -->
 <html lang="en">
 <head>
@@ -29,9 +34,20 @@
     var MOUSE_H = 280;
     var LAYER_TINTS = [["#2f2f31", 1, 2], ["#151517", 0.5, 1], ["#202022", 0.9, 1], ["#6a6a6c", 0.3, 1]];
     var SNOUT = { u: 0.08, v: 0.68 };
+    var EARS = [];                // in tile px; for the computer only
 
     var MOUSE = 0;                // the caller, facing left
     var WIDTH = 200;              // px of the output, about 2.5x its size on the card
+    var NAME = "mouse-card.webp";
+
+    // Keep in sync with VARIANTS in mice.js.
+    if (new URLSearchParams(location.search).get("mouse") === "computer") {
+      ATLAS_SRC = "../site/static/img/computer.webp";
+      SNOUT = { u: 0.196, v: 0.495 };
+      EARS = [{ c: [92, 47], r: [22, 26], pivot: [97, 69] },
+              { c: [149, 46], r: [26, 29], pivot: [151, 71] }];
+      NAME = "computer-card.webp";
+    }
 
     var img = new Image();
     img.onload = function () {
@@ -74,11 +90,18 @@
       window.cardDataURL = url;
       var link = document.createElement("a");
       link.href = url;
-      link.download = "mouse-card.webp";
+      link.download = NAME;
       var snout = { u: (SNOUT.u * MOUSE_W - x0) / w, v: (SNOUT.v * MOUSE_H - y0) / h };
       window.cardSnout = snout;
-      link.textContent = "Download mouse-card.webp (" + out.width + " x " + out.height +
-        "); snout at u " + snout.u.toFixed(3) + ", v " + snout.v.toFixed(3) + " (set SNOUT in usv-card.js)";
+      var k = out.width / w;
+      function px(q) { return [Math.round((q[0] - x0) * k), Math.round((q[1] - y0) * k)]; }
+      var ears = EARS.map(function (e) {
+        return { c: px(e.c), r: [Math.round(e.r[0] * k), Math.round(e.r[1] * k)], pivot: px(e.pivot) };
+      });
+      window.cardEars = ears;
+      link.textContent = "Download " + NAME + " (" + out.width + " x " + out.height +
+        "); snout at u " + snout.u.toFixed(3) + ", v " + snout.v.toFixed(3) + " (set SNOUT in usv-card.js)" +
+        (ears.length ? "; ears " + JSON.stringify(ears) : "");
       document.getElementById("status").replaceChildren(link);
       var preview = document.createElement("img");
       preview.src = url;

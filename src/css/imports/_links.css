@@ -15,7 +15,7 @@
 .link:active  {
   transition: color .15s ease-in;
 }
-.link:focus   {
+.link:focus-visible {
   transition: color .15s ease-in;
   outline: 1px dotted currentColor;
 }
