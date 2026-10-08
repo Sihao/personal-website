@@ -10,7 +10,8 @@
 //
 // Motion policy, shared by every animation on the site: with reduced
 // motion a sketch shows its end state and never moves; otherwise it rests
-// still and moves only while hovered (or, on touch screens, after a tap).
+// still and moves only while hovered (or, on touch screens, after a tap,
+// and while it is the drawing most in view: site/static/js/in-view.js).
 // Each sketch starts and stops its own loop to obey this.
 (function () {
   "use strict";

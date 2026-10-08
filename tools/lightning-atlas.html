@@ -1,0 +1,279 @@
+<!doctype html>
+<!--
+  Paints the sprite atlas used by site/static/js/lightning-card.js.
+
+  Open this file in a browser with WebGL2 and save the result as
+  site/static/img/lightning.webp. The atlas is white, with alpha = pigment
+  density, so the card can tint each sprite with any colour. It has two
+  rows of BOLTS tiles, each TILE_W x TILE_H, a bolt that fans out from the
+  top middle of its tile towards the bottom, as a dendritic tree:
+    - row 0: the bolt's core, jagged charcoal lines that taper, thinner at
+             each split;
+    - row 1: its glow, one continuous watercolour stroke along the same
+             path without its zigzags, with p5.brush bleed and texture.
+  Tile i of row 0 and tile i of row 1 hold the same bolt, so the card can
+  draw them over each other and time them apart: the core flickers, the
+  glow lingers.
+
+  Painting is seeded, so the same SEED gives the same atlas.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Lightning atlas</title>
+  <style>
+    body { margin: 16px; font-family: sans-serif; background: #14213d; color: #e5e5e5; }
+    body > canvas, main > canvas { display: none; }
+    img { display: block; max-width: 100%; margin-bottom: 16px; background: #14213d; }
+    a { color: #fca311; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.min.js" integrity="sha384-Cs48F1uukMPysq29xNsf/FZL5ZNGsPfi6lDSGOxo6dypVFFiWO9Q3YbRKoXPPBii" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5.brush@2.2.3/dist/p5.brush.js" integrity="sha384-kwWM3zLjD/CdRap70WTKAsSsnuRP+m8UUSUCTvKE0YT9kCV50Lf9T33B819pu4hh" crossorigin="anonymous"></script>
+</head>
+<body>
+  <p id="status">Painting…</p>
+  <script>
+    // Keep in sync with lightning-card.js.
+    var TILE_W = 320;
+    var TILE_H = 384;
+    var BOLTS = 10;
+
+    var SEED = 7;
+    var BRUSH_SCALE = 1.5;        // brush.scaleBrushes(), as for the washes
+    var MARGIN = 10;              // px kept clear inside each tile
+    var FLOOR = 0.04;             // pigment density below which a pixel is cleared
+
+    var W = BOLTS * TILE_W;
+    var H = 2 * TILE_H;
+
+    // Atlas pixel coordinates -> WEBGL coordinates (origin at the centre).
+    function P(x, y) { return [x - W / 2, y - H / 2]; }
+
+    // A jagged path from a to b by midpoint displacement: each pass puts a
+    // new point in the middle of every segment, pushed sideways by up to
+    // rough[pass] of the segment's length. Low roughness in the first
+    // passes keeps the overall sway small; high roughness in the last ones
+    // gives the sharp zigzags of lightning.
+    function jagged(a, b, rough) {
+      var pts = [a, b];
+      rough.forEach(function (r) {
+        var next = [pts[0]];
+        for (var i = 1; i < pts.length; i++) {
+          var p = pts[i - 1], q = pts[i];
+          var dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy) || 1;
+          var off = random(-1, 1) * r * len;
+          next.push([(p[0] + q[0]) / 2 - dy / len * off, (p[1] + q[1]) / 2 + dx / len * off], q);
+        }
+        pts = next;
+      });
+      function keep(p) {
+        return [constrain(p[0], MARGIN, TILE_W - MARGIN), constrain(p[1], MARGIN, TILE_H - MARGIN)];
+      }
+      return pts.map(keep);
+    }
+
+    // How far from p a straight line at angle a runs before it comes
+    // within 2 MARGIN of the tile's edge, so a branch ends inside the tile
+    // and does not run along its edge.
+    function room(p, a) {
+      var c = Math.cos(a), d = Math.sin(a), m = 2 * MARGIN, far = Infinity;
+      if (c > 0) far = Math.min(far, (TILE_W - m - p[0]) / c);
+      if (c < 0) far = Math.min(far, (m - p[0]) / c);
+      if (d > 0) far = Math.min(far, (TILE_H - m - p[1]) / d);
+      return Math.max(0, far);
+    }
+
+    var MAIN_ROUGH = [0.05, 0.08, 0.25, 0.4, 0.45];
+    var BRANCH_ROUGH = [0.12, 0.3, 0.4, 0.45];
+
+    // A bolt, in tile px, shaped as a simple dendritic tree that fans out:
+    // a short trunk down from the top middle (where the card puts the cell
+    // body), then PRIMARIES branches spread over FAN either side of
+    // straight down, the middle one longest, and about half of them with
+    // one side branch, outwards. Each path has a weight: the trunk 1, then
+    // thinner at each split.
+    var FAN = 40;                 // degrees either side of straight down
+    var PRIMARIES = 3;
+    var SIDE_BRANCH = 0.5;        // chance a primary branch has a side branch
+    function bolt() {
+      var top = [TILE_W * random(0.47, 0.53), MARGIN];
+      var trunk = jagged(top, [top[0] + random(-0.02, 0.02) * TILE_W, top[1] + TILE_H * random(0.1, 0.14)], BRANCH_ROUGH);
+      var paths = [{ pts: trunk, weight: 1 }];
+      var fork = trunk[trunk.length - 1];
+      var k = PRIMARIES;
+      for (var i = 0; i < k; i++) {
+        var off = -FAN + 2 * FAN * (i + 0.5) / k + random(-5, 5);
+        var a = HALF_PI + radians(off);
+        var len = Math.min(TILE_H * (0.9 - 0.35 * Math.abs(off) / FAN) * random(0.85, 1), room(fork, a));
+        var primary = jagged(fork, [fork[0] + Math.cos(a) * len, fork[1] + Math.sin(a) * len], MAIN_ROUGH);
+        paths.push({ pts: primary, weight: 0.75 });
+        var side = off < 0 ? -1 : 1;        // outwards
+        if (random() < SIDE_BRANCH) {
+          var p = primary[floor(random(0.35, 0.65) * primary.length)];
+          var a2 = a + side * radians(random(25, 40));
+          var len2 = Math.min(len * random(0.3, 0.45), room(p, a2));
+          paths.push({ pts: jagged(p, [p[0] + Math.cos(a2) * len2, p[1] + Math.sin(a2) * len2], BRANCH_ROUGH), weight: 0.45 });
+        }
+      }
+      return paths;
+    }
+
+    // The core: charcoal along each path, tapering to its end, the trunk
+    // and the primary branches laid twice for a denser line.
+    function core(paths, ox, oy) {
+      paths.forEach(function (path) {
+        var n = path.pts.length;
+        var pts = path.pts.map(function (p, i) {
+          return P(ox + p[0], oy + p[1]).concat([1 - 0.7 * i / (n - 1)]);
+        });
+        for (var pass = 0; pass < (path.weight >= 0.75 ? 2 : 1); pass++) {
+          brush.set("charcoal", "#000000", 1.6 * path.weight);
+          brush.spline(pts, 0);
+        }
+      });
+    }
+
+    // Points every `step` px along a path, and its last point.
+    function resampled(pts, step) {
+      var out = [pts[0]], carry = 0;
+      for (var i = 1; i < pts.length; i++) {
+        var p = pts[i - 1], q = pts[i], len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        for (var d = step - carry; d < len; d += step) {
+          out.push([p[0] + (q[0] - p[0]) * d / len, p[1] + (q[1] - p[1]) * d / len]);
+        }
+        carry = (carry + len) % step;
+      }
+      out.push(pts[pts.length - 1]);
+      return out;
+    }
+
+    // The path with each point the mean of its neighbours up to k away:
+    // the bolt's line without its zigzags, which the glow follows.
+    function straightened(pts, k) {
+      return pts.map(function (p, i) {
+        var x = 0, y = 0, n = 0;
+        for (var j = Math.max(0, i - k); j <= Math.min(pts.length - 1, i + k); j++) {
+          x += pts[j][0];
+          y += pts[j][1];
+          n++;
+        }
+        return [x / n, y / n];
+      });
+    }
+
+    // A ragged ribbon around a path, `width` px across at its start and
+    // narrowing towards its end, with rounded ends.
+    function ribbon(pts, width) {
+      var left = [], right = [], n = pts.length, phase = random(1000);
+      for (var i = 0; i < n; i++) {
+        var p = pts[i], q = pts[Math.min(n - 1, i + 1)], r = pts[Math.max(0, i - 1)];
+        var dx = q[0] - r[0], dy = q[1] - r[1], len = Math.hypot(dx, dy) || 1;
+        var t = i / (n - 1);
+        var hw = width / 2 * (1 - 0.5 * t) * (0.8 + 0.4 * noise(phase + i * 0.05)) *
+          Math.sqrt(Math.min(1, 6 * Math.min(t, 1 - t) + 0.15));
+        left.push([p[0] - dy / len * hw, p[1] + dx / len * hw]);
+        right.push([p[0] + dy / len * hw, p[1] - dx / len * hw]);
+      }
+      return left.concat(right.reverse());
+    }
+
+    // The glow: one continuous watercolour stroke along each path without
+    // its zigzags, bleeding out at its edges; two glazes of slightly
+    // different width along the trunk and each primary branch, one along
+    // each smaller branch.
+    function glow(paths, ox, oy) {
+      brush.noStroke();
+      paths.forEach(function (path) {
+        // Few points: p5.brush's bleed draws spikes from a polygon with
+        // very many (about 260); the washes' blots have 56.
+        // Averaged over 2 points each side: it loses the fine zigzags and
+        // keeps to the core's sway, and to a short branch's length.
+        var pts = resampled(straightened(path.pts, 2), 12);
+        var glazes = path.weight >= 0.75 ? 2 : 1;
+        for (var g = 0; g < glazes; g++) {
+          brush.fill(0, 0, 0, random(45, 70));
+          // Little bleed: on a long, thin polygon a strong bleed fans out
+          // in faint spikes to the sides.
+          brush.fillBleed(random(0.08, 0.15), "out");
+          brush.fillTexture(random(0.2, 0.4), random(0.15, 0.3), true);
+          brush.polygon(ribbon(pts, 36 * path.weight * (g ? 0.65 : 1)).map(function (q) {
+            return P(ox + q[0], oy + q[1]);
+          }));
+        }
+      });
+      brush.noFill();
+    }
+
+    function setup() {
+      createCanvas(W, H, WEBGL);
+      pixelDensity(1);
+      randomSeed(SEED);
+      noiseSeed(SEED);
+      background(255);
+      brush.scaleBrushes(BRUSH_SCALE);
+      brush.noField();
+      for (var i = 0; i < BOLTS; i++) {
+        var paths = bolt();
+        core(paths, i * TILE_W, 0);
+        glow(paths, i * TILE_W, TILE_H);
+      }
+    }
+
+    function ramp(e0, e1, x) {
+      var t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+      return t * t * (3 - 2 * t);
+    }
+
+    // p5.brush composites the painting when setup() returns. Each tile is
+    // normalised to its own densest pixel and faded out at its border, so
+    // no sprite carries a seam from its neighbour.
+    function draw() {
+      noLoop();
+      loadPixels();
+      var d = pixelDensity();
+      var out = document.createElement("canvas");
+      out.width = W;
+      out.height = H;
+      var ctx = out.getContext("2d");
+      var img = ctx.createImageData(W, H);
+      for (var row = 0; row < 2; row++) {
+        for (var i = 0; i < BOLTS; i++) {
+          var ox = i * TILE_W, oy = row * TILE_H;
+          var max = 0, x, y, k, v;
+          var dens = new Float32Array(TILE_W * TILE_H);
+          for (y = 0; y < TILE_H; y++) {
+            for (x = 0; x < TILE_W; x++) {
+              k = 4 * ((oy + y) * d * W * d + (ox + x) * d);
+              // The faintest pigment, left by the bleed far from the
+              // stroke, is cleared.
+              v = Math.max(0, 1 - (pixels[k] + pixels[k + 1] + pixels[k + 2]) / 765 - FLOOR) *
+                ramp(0, 6, Math.min(x, y, TILE_W - 1 - x, TILE_H - 1 - y));
+              dens[y * TILE_W + x] = v;
+              max = Math.max(max, v);
+            }
+          }
+          for (y = 0; y < TILE_H; y++) {
+            for (x = 0; x < TILE_W; x++) {
+              var q = 4 * ((oy + y) * W + ox + x);
+              img.data[q] = img.data[q + 1] = img.data[q + 2] = 255;
+              img.data[q + 3] = Math.round(255 * Math.pow(dens[y * TILE_W + x] / (max || 1), 0.85));
+            }
+          }
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      var url = out.toDataURL("image/webp", 0.9);
+      window.atlasDataURL = url;
+
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = "lightning.webp";
+      link.textContent = "Download lightning.webp";
+      document.getElementById("status").replaceChildren(link);
+      var preview = document.createElement("img");
+      preview.src = url;
+      document.body.appendChild(preview);
+    }
+  </script>
+</body>
+</html>

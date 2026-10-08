@@ -24,6 +24,9 @@
       dialog.showModal();
       dialog.focus();             // not the close button, which would show its ring
       dialog.scrollTop = 0;
+      // Justified as TeX would, as the About text is (tex-justify.js), now
+      // that the popup is laid out.
+      if (window.texJustify) window.texJustify(body.querySelectorAll(".publication-abstract-text p"));
     }
 
     document.querySelectorAll(".publication-card").forEach(function (card) {

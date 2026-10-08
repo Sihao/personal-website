@@ -446,7 +446,7 @@
     prime();
     render();
     if (reducedMotion) return;
-    var active = 0;               // pointer over, focus within: a bit each
+    var active = 0;               // pointer over, focus within, in view on a touch screen: a bit each
     var set = function (bit, on) {
       var was = active;
       active = on ? active | bit : active & ~bit;
@@ -461,6 +461,8 @@
     card.addEventListener("mouseleave", function () { set(1, false); });
     card.addEventListener("focusin", function () { set(2, true); });
     card.addEventListener("focusout", function () { set(2, false); });
+    // No hover on a touch screen: run while most in view (in-view.js).
+    if (window.inView) window.inView.watch(card, function (on) { set(4, on); });
   }
 
   function load(src) {

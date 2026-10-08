@@ -4,11 +4,13 @@
 	<h2 class="f4 lh-title mt2 mb3 primary">{{ .Title }}</h2>
 	{{ with .Params.authors }}<div class="authors f6 lh-copy grey-3 mb4">{{ . | markdownify }}</div>{{ end }}
 	<template class="publication-abstract">
-		<div class="f6 lh-copy mt4">{{ .Content }}</div>
+		<div class="publication-abstract-text f6 lh-copy mt4">{{ .Content }}</div>
 		{{ with .Params.doi }}<p class="fine mt3 mb0"><a class="primary" href="https://doi.org/{{ . }}">doi:{{ . }}</a></p>{{ end }}
 	</template>
 	<button type="button" class="publication-more link b f6 primary mb0" aria-haspopup="dialog">Read abstract →</button>
 	{{ if in (slice "usv" "computer") .Params.card }}<canvas class="publication-usv"{{ if eq .Params.card "computer" }} data-mouse="computer"{{ end }} aria-hidden="true"></canvas>{{ end }}
 	{{ if eq .Params.card "zebrafish" }}<div class="publication-drawing" data-drawing="zebrafish" data-fit="card" aria-hidden="true"></div>{{ end }}
+	{{ if eq .Params.card "lightning" }}<canvas class="publication-lightning" aria-hidden="true"></canvas>{{ end }}
+	{{ if eq .Params.card "astrocytes" }}<canvas class="publication-blots" aria-hidden="true"></canvas>{{ end }}
 	{{ if eq .Params.card "planes" }}<div class="publication-planes" data-three-sketch="planes" data-fit="card" aria-hidden="true"></div>{{ end }}
 </article>

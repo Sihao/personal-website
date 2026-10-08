@@ -47,8 +47,8 @@
    for paragraphs; plus 1rem of padding each side. */
 .mw-cards { max-width: 65rem; }
 
-/* The About text on the landing page (short-text.html), set as close to
-   LaTeX as a browser allows. site/static/js/tex-justify.js breaks the lines
+/* The About text on the landing page (short-text.html) and the abstracts
+   in the publication popup, set as close to LaTeX as a browser allows. site/static/js/tex-justify.js breaks the lines
    with TeX's algorithm and hyphenation patterns; until it runs, or if it
    cannot load, the browser justifies and hyphenates with TeX's limits
    (words of 5 letters or more, 2 before a break, 3 after) and balances
@@ -56,7 +56,8 @@
    kerning is on, as in TeX, and so are its standard ligatures (the
    default; do not set font-variant-ligatures, as tex-linebreak copies the
    computed font to a canvas to measure words, and a canvas rejects it). */
-.about-text {
+.about-text,
+.publication-abstract-text p {
   text-align: justify;
   hyphens: auto;
   hyphenate-limit-chars: 5 2 3;
@@ -154,6 +155,22 @@
   position: absolute;
   left: var(--spacing-medium);
   right: var(--spacing-medium);
+  pointer-events: none;
+}
+
+/* blots-card.js sets the size: from below the text down to the bottom
+   right corner, as for the mouse's canvas. */
+.publication-blots {
+  position: absolute;
+  right: var(--spacing-medium);
+  bottom: var(--spacing-medium);
+  pointer-events: none;
+}
+
+/* lightning-card.js sets the place and the size: below the text, above
+   "Read abstract", across the card's inner width. */
+.publication-lightning {
+  position: absolute;
   pointer-events: none;
 }
 

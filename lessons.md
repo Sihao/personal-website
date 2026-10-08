@@ -194,3 +194,84 @@ reproduce it.
   spaces.
 - Check: scratchpad build/tex.js logs, per line, the gap between the last
   glyph and the right margin (0-1 px at 1280, 390, 345, 320 px).
+
+## Astrocyte card: the blots sat off to the right of the card
+
+- Symptom: the canvas of blots-card.js was wider than the card, and the
+  triangle of blots was cut off at the right edge.
+- Cause: `.publication-blots` had `left` and `right`, as `.publication-planes`
+  does. A `<canvas>` is a replaced element, so `left` + `right` do not
+  stretch it. It kept its intrinsic width, which is the width of its backing
+  store (width × dpr) after the first layout, so it grew past the card.
+- Fix: give the canvas `width: calc(100% - 2 * var(--spacing-medium))` in
+  the CSS.
+
+## Hugo dev server: every page shows "file does not exist"
+
+- Symptom: `hugo server` (v0.109) answers every URL with its error page,
+  "file does not exist", and stays so after later edits.
+- Cause: an editor that saves atomically (here, Claude Code's Write tool)
+  writes `name.js.tmp.<pid>.<hash>` into `static/` and renames it at once.
+  The fsnotify watcher sees the temp file, the static sync tries to copy
+  it after it is gone, and the server keeps that error. Reproduced with
+  `echo x > static/js/t.js.tmp.1 && mv static/js/t.js.tmp.1 static/js/t.js`.
+- Tried, did not work: `excludeFiles = ["**/*.tmp.*"]` on the static
+  module mounts (the server still gets the event); a plain write or a
+  template edit after the error (the error page stays).
+- Fix: run the server with `--poll 500ms`. The polling watcher scans for
+  changes, so a temp file that exists for an instant never shows. A server
+  already in the error state needs a restart.
+
+## Touch screens: only the first cards ran while in view
+
+- Symptom: on a phone (Arc device mode), the in-view animation ran for the
+  first cards but not for the last ones.
+- Cause: in-view.js ran the drawing with the largest visible fraction, and
+  a tie kept the one that ran. On a tall screen two cards are fully in view
+  at once (both 1.0), so the card above kept running; at the foot of the
+  page the last cards were never more in view than it, and never started.
+  A test that scrolled each card to the centre of a 700 px viewport did
+  not show it: there one card always led.
+- Fix: a focus line that moves from the top of the viewport to its bottom
+  as the page scrolls from top to bottom; the drawings it crosses run (a
+  whole row of cards on a tablet). The choice is made on scroll, after the
+  page holds still for 150 ms, not on IntersectionObserver thresholds.
+- Also: the hover test is a live matchMedia listener, so switching device
+  mode on needs no reload. `Emulation.setEmulatedMedia` with a `hover`
+  feature does not change `(hover: none)`; `setTouchEmulationEnabled` does.
+- Check: scratchpad build/iv5.js (430x932, 390x600, 820x1180) and iv6.js.
+
+## Lightning atlas: the tool page never finished painting
+
+- Symptom: tools/lightning-atlas.html stopped with "Cannot redefine
+  property: smooth", and window.atlasDataURL never came.
+- Cause: the atlas tools run p5 in global mode, which puts p5's functions
+  (smooth, noise, random, fill, ...) on window. A top-level helper named
+  `smooth` clashed with p5's own.
+- Fix: rename the helper (`straightened`). In a global-mode tool, check a
+  new top-level name against the p5 reference first.
+
+## Lightning atlas: the glow did not follow the bolt
+
+- Symptom: on the card, the orange glow lay to one side of the bolt's core.
+- Cause: the glow followed the path after the first two passes of midpoint
+  displacement; the later, rougher passes moved the core far from it.
+- Fix: the glow follows the final path averaged over 2 points each side
+  (its line without the fine zigzags). Over 4 points it still drifted off
+  the core's larger sways.
+- Also: one long glow polygon with a strong p5.brush bleed (0.25-0.4) fans
+  out in faint spikes to the sides, worse with many points (~260). Keep
+  the bleed at 0.08-0.15, resample the path every 12 px, and clear pigment
+  below 4 % density when the tile is saved.
+
+## Lightning card: parts of the lower branches looked whited out
+
+- Symptom: on the voltage imaging card, parts of some dendrites' lower
+  branches were missing, as if painted over in white.
+- Cause: to keep the drawing in the astrocyte card's fan, the card masked
+  it to the fan's outline (`destination-in`). The fan follows a curved
+  path, but each dendrite is a straight sprite fanning ±40°, so its outer
+  branches crossed the fan's edge and the mask cut them off.
+- Fix: no mask. The drawing keeps to the fan by its own shape: the cell
+  bodies lie near the fan's path in its narrow end, each dendrite points at
+  the fan's far end, and its sprite is no wider than the fan's end.

@@ -77,7 +77,7 @@
   // swims down and to the right, its tail up and to the left.
   var HEADING = 58 * Math.PI / 180;
   var PLACES = {
-    card: { nose: [0.86, 0.9], len: [0.46, 0.55] },   // length: of the width, of the height, whichever is less
+    card: { nose: [0.86, 0.9], len: [0.552, 0.66] },  // length: of the width, of the height, whichever is less
     page: { nose: [0.8, 0.88], len: [0.85, 0.42] }
   };
 
@@ -662,7 +662,7 @@
     else window.addEventListener("resize", layout);
     if (reducedMotion) return;
 
-    var active = 0;               // pointer over, focus within: a bit each
+    var active = 0;               // pointer over, focus within, in view on a touch screen: a bit each
     var set = function (bit, on) {
       var was = active;
       active = on ? active | bit : active & ~bit;
@@ -677,6 +677,8 @@
     host.addEventListener("mouseleave", function () { set(1, false); });
     host.addEventListener("focusin", function () { set(2, true); });
     host.addEventListener("focusout", function () { set(2, false); });
+    // No hover on a touch screen: run while most in view (in-view.js).
+    if (window.inView) window.inView.watch(host, function (on) { set(4, on); });
   }
 
   function init() {

@@ -15,7 +15,8 @@
 //   - a wave evoked from each click or tap.
 // The field rests as a still frame, part way through its activity. It
 // comes alive only while the pointer is over it (or for a while after a
-// tap): events start, easing in. When the hover ends, events ease off and
+// tap, or, on a touch screen, while it is the drawing most in view; see
+// site/static/js/in-view.js): events start, easing in. When the hover ends, events ease off and
 // stop, the blots that are lit fade back as their calcium decays, and the
 // field stops once all of them are dark. With reduced motion it stays a
 // still frame and never moves.
@@ -157,6 +158,7 @@
     var pending = [];             // scheduled events: {t, blot, amount}
     var t = 0;
     var pointerInside = false;
+    var viewing = false;          // the one in view on a touch screen (in-view.js)
     var holdUntil = 0;            // ms, performance.now() until which a tap keeps it alive
     var drive = 0, driveV = 0;    // how strongly events arrive, 0 to 1, and its rate of change
     var atlas = null;
@@ -416,7 +418,7 @@
     }
 
     function alive() {
-      return pointerInside || performance.now() < holdUntil;
+      return pointerInside || viewing || performance.now() < holdUntil;
     }
 
     // Moves the drive towards its target along a critically damped
@@ -463,6 +465,11 @@
           p.loop();
         });
         el.addEventListener("pointerleave", function () { pointerInside = false; });
+        // No hover on a touch screen: run while most in view.
+        if (window.inView) window.inView.watch(el, function (on) {
+          viewing = on;
+          if (on) p.loop();
+        });
         el.addEventListener("pointerdown", function (e) {
           // The canvas, not the frame: the parallax header moves the canvas within it.
           var rect = p.canvas.getBoundingClientRect();
