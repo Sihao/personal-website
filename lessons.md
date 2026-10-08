@@ -275,3 +275,22 @@ reproduce it.
 - Fix: no mask. The drawing keeps to the fan by its own shape: the cell
   bodies lie near the fan's path in its narrow end, each dendrite points at
   the fan's far end, and its sprite is no wider than the fan's end.
+
+## Netlify build failed on the landing-page branch (PR #16)
+
+- Symptom: the Netlify deploy preview failed after about 25 s; local builds
+  (Hugo 0.109, postcss-import + postcss-custom-media) were fine.
+- Cause 1: gulpfile.babel.js runs the bundled bin/hugo.linux, a Hugo from
+  December 2017 (about v0.31). The branch's templates use `site.` (Hugo
+  0.53+) and front matter `cascade`/`_build` (0.57+).
+- Cause 2: the CSS task runs postcss-cssnext and cssnano 3; their
+  postcss-calc cannot parse `clamp()` inside `calc()` ("Parse error ...
+  got unexpected PREFIX"), and with custom properties kept, pixrem stops on
+  "Root font-size is invalid".
+- Not possible here: running the old Hugo (the 0.31 macOS build segfaults
+  on this macOS; no Docker).
+- Fix: netlify.toml sets HUGO_VERSION = "0.109.0" and HUGO_BIN = "hugo";
+  the gulpfile uses HUGO_BIN when set. The CSS task runs cssnext with
+  `customProperties`, `calc` and `rem` off, and no cssnano. Checked: every
+  element's computed style on the home page (1280 and 390 px) is the same
+  as with the tested CSS.
