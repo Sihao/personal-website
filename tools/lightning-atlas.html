@@ -5,12 +5,12 @@
   Open this file in a browser with WebGL2 and save the result as
   site/static/img/lightning.webp. The atlas is white, with alpha = pigment
   density, so the card can tint each sprite with any colour. It has two
-  rows of BOLTS tiles, each TILE_W x TILE_H, a bolt that fans out from the
-  top middle of its tile towards the bottom, as a dendritic tree:
-    - row 0: the bolt's core, jagged charcoal lines that taper, thinner at
-             each split;
-    - row 1: its glow, one continuous watercolour stroke along the same
-             path without its zigzags, with p5.brush bleed and texture.
+  rows of BOLTS tiles, each TILE_W x TILE_H, a bolt grown down from the top
+  middle of its tile, its branches fanning out as they split:
+    - row 0: the bolt's core, jagged charcoal and pencil lines that taper,
+             thinner at each split;
+    - row 1: its glow, a continuous watercolour stroke along the main
+             channel, without its zigzags, with p5.brush bleed and texture.
   Tile i of row 0 and tile i of row 1 hold the same bolt, so the card can
   draw them over each other and time them apart: the core flickers, the
   glow lingers.
@@ -49,85 +49,119 @@
     // Atlas pixel coordinates -> WEBGL coordinates (origin at the centre).
     function P(x, y) { return [x - W / 2, y - H / 2]; }
 
-    // A jagged path from a to b by midpoint displacement: each pass puts a
-    // new point in the middle of every segment, pushed sideways by up to
-    // rough[pass] of the segment's length. Low roughness in the first
-    // passes keeps the overall sway small; high roughness in the last ones
-    // gives the sharp zigzags of lightning.
-    function jagged(a, b, rough) {
-      var pts = [a, b];
-      rough.forEach(function (r) {
-        var next = [pts[0]];
-        for (var i = 1; i < pts.length; i++) {
-          var p = pts[i - 1], q = pts[i];
-          var dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy) || 1;
-          var off = random(-1, 1) * r * len;
-          next.push([(p[0] + q[0]) / 2 - dy / len * off, (p[1] + q[1]) / 2 + dx / len * off], q);
+    // A bolt, in tile px, grown as lightning is: each channel is a walk of
+    // short steps, STEP px long or so, each turned at random up to KINK from
+    // the channel's heading, which drifts a little and is kept heading down
+    // (within SPREAD of straight down). Along the way a channel splits: a
+    // branch leaves at a sharp angle, outwards, and grows the same way,
+    // shorter and thinner, and splits in turn, down to DEPTH levels. The
+    // main channel runs from the top middle (where the card puts the cell
+    // body) nearly straight down; its branches spread into a wide fan.
+    // Each path has a weight: the main channel 1, thinner at each level.
+    var STEP = [2, 6];            // px
+    var KINK = 40;                // degrees
+    var SPREAD = 70;              // degrees either side of straight down, for a branch
+    var MAIN_SPREAD = 35;         // the same, for the main channel
+    // The main channel's heading drifts up to MAIN_DRIFT degrees a step and
+    // is pulled back to its course by MAIN_PULL of the difference, so it
+    // wanders in broad bends; its steps turn up to MAIN_KINK. A branch's:
+    // 4 degrees, 0.04, KINK.
+    var MAIN_DRIFT = 9;
+    var MAIN_PULL = 0.03;
+    var MAIN_KINK = 50;
+    var DEPTH = 2;
+    var LEVELS = [                // per level: weight, splits per px, branch length (of the parent's left), angle (degrees)
+      { weight: 1, split: 0.015, len: [0.55, 0.9], angle: [30, 55] },
+      { weight: 0.4, split: 0.012, len: [0.35, 0.6], angle: [25, 50] },
+      { weight: 0.25, split: 0.02, len: [0.3, 0.5], angle: [20, 45] },
+      { weight: 0.15, split: 0, len: [0, 0], angle: [0, 0] }
+    ];
+
+    function inside(p) {
+      return p[0] > MARGIN && p[0] < TILE_W - MARGIN && p[1] > MARGIN && p[1] < TILE_H - MARGIN;
+    }
+
+    // One channel from p, heading `a` (radians, 0 = right, down = HALF_PI),
+    // about `len` px long, at `level`; its branches go into `paths`.
+    function channel(p, a, len, level, paths, from) {
+      var L = LEVELS[level], pts = [p], walked = 0, heading = a, down = HALF_PI;
+      var next = random() < 0.5 ? -1 : 1;   // the main channel's next branch side
+      var lim = radians(level ? SPREAD : MAIN_SPREAD);
+      while (walked < len) {
+        var drift = level ? 4 : MAIN_DRIFT;
+        heading += radians(random(-drift, drift)) + (level ? 0.04 : MAIN_PULL) * (a - heading);
+        heading = constrain(heading, down - lim, down + lim);
+        var kink = level ? KINK : MAIN_KINK;
+        var step = random(STEP[0], STEP[1]), turn = heading + radians(random(-kink, kink));
+        var q = [p[0] + Math.cos(turn) * step, p[1] + Math.sin(turn) * step];
+        if (!inside(q)) break;
+        pts.push(q);
+        p = q;
+        walked += step;
+        if (level < DEPTH && walked > 0.08 * len && random() < L.split * step) {
+          var N = LEVELS[level + 1];
+          // The main channel's branches alternate sides, so the bolt is
+          // balanced left and right; a branch's go outwards, away from
+          // straight down, more often than not.
+          var side;
+          if (!level) {
+            side = next;
+            next = -next;
+          } else {
+            side = heading < down ? -1 : heading > down ? 1 : (random() < 0.5 ? -1 : 1);
+            if (random() < 0.3) side = -side;
+          }
+          channel(p, heading + side * radians(random(L.angle[0], L.angle[1])),
+            (len - walked) * random(L.len[0], L.len[1]) + 12, level + 1, paths, side);
         }
-        pts = next;
-      });
-      function keep(p) {
-        return [constrain(p[0], MARGIN, TILE_W - MARGIN), constrain(p[1], MARGIN, TILE_H - MARGIN)];
       }
-      return pts.map(keep);
+      if (pts.length > 2) paths.push({ pts: pts, weight: L.weight, level: level, side: from || 0 });
     }
 
-    // How far from p a straight line at angle a runs before it comes
-    // within 2 MARGIN of the tile's edge, so a branch ends inside the tile
-    // and does not run along its edge.
-    function room(p, a) {
-      var c = Math.cos(a), d = Math.sin(a), m = 2 * MARGIN, far = Infinity;
-      if (c > 0) far = Math.min(far, (TILE_W - m - p[0]) / c);
-      if (c < 0) far = Math.min(far, (m - p[0]) / c);
-      if (d > 0) far = Math.min(far, (TILE_H - m - p[1]) / d);
-      return Math.max(0, far);
-    }
-
-    var MAIN_ROUGH = [0.05, 0.08, 0.25, 0.4, 0.45];
-    var BRANCH_ROUGH = [0.12, 0.3, 0.4, 0.45];
-
-    // A bolt, in tile px, shaped as a simple dendritic tree that fans out:
-    // a short trunk down from the top middle (where the card puts the cell
-    // body), then PRIMARIES branches spread over FAN either side of
-    // straight down, the middle one longest, and about half of them with
-    // one side branch, outwards. Each path has a weight: the trunk 1, then
-    // thinner at each split.
-    var FAN = 40;                 // degrees either side of straight down
-    var PRIMARIES = 3;
-    var SIDE_BRANCH = 0.5;        // chance a primary branch has a side branch
+    // Grown again until the main channel has at least MIN_BRANCHES, at
+    // least one on each side, at most one more on one side than the other,
+    // and their reach (summed from base to tip) within BALANCE of each
+    // other, and runs from tip to tip within MAX_LEAN of straight down, so
+    // its sway does not tip the whole bolt over.
+    var MIN_BRANCHES = 2;
+    var BALANCE = 2;              // most the branches' reach on one side may exceed the other's
+    var MAX_LEAN = 12;            // degrees
     function bolt() {
-      var top = [TILE_W * random(0.47, 0.53), MARGIN];
-      var trunk = jagged(top, [top[0] + random(-0.02, 0.02) * TILE_W, top[1] + TILE_H * random(0.1, 0.14)], BRANCH_ROUGH);
-      var paths = [{ pts: trunk, weight: 1 }];
-      var fork = trunk[trunk.length - 1];
-      var k = PRIMARIES;
-      for (var i = 0; i < k; i++) {
-        var off = -FAN + 2 * FAN * (i + 0.5) / k + random(-5, 5);
-        var a = HALF_PI + radians(off);
-        var len = Math.min(TILE_H * (0.9 - 0.35 * Math.abs(off) / FAN) * random(0.85, 1), room(fork, a));
-        var primary = jagged(fork, [fork[0] + Math.cos(a) * len, fork[1] + Math.sin(a) * len], MAIN_ROUGH);
-        paths.push({ pts: primary, weight: 0.75 });
-        var side = off < 0 ? -1 : 1;        // outwards
-        if (random() < SIDE_BRANCH) {
-          var p = primary[floor(random(0.35, 0.65) * primary.length)];
-          var a2 = a + side * radians(random(25, 40));
-          var len2 = Math.min(len * random(0.3, 0.45), room(p, a2));
-          paths.push({ pts: jagged(p, [p[0] + Math.cos(a2) * len2, p[1] + Math.sin(a2) * len2], BRANCH_ROUGH), weight: 0.45 });
-        }
-      }
+      var paths;
+      do {
+        paths = [];
+        channel([TILE_W * random(0.47, 0.53), MARGIN + 1], HALF_PI + radians(random(-5, 5)), TILE_H, 0, paths);
+        var main = paths.filter(function (p) { return p.level === 0; })[0], a = main.pts[0], b = main.pts[main.pts.length - 1];
+        var lean = degrees(Math.abs(Math.atan2(b[0] - a[0], b[1] - a[1])));
+        var left = paths.filter(function (p) { return p.level === 1 && p.side < 0; });
+        var right = paths.filter(function (p) { return p.level === 1 && p.side > 0; });
+        var reach = function (list) {
+          return list.reduce(function (t, p) {
+            var u = p.pts[0], v = p.pts[p.pts.length - 1];
+            return t + Math.hypot(v[0] - u[0], v[1] - u[1]);
+          }, 0);
+        };
+        var ratio = reach(left) / (reach(right) || 1);
+      } while (left.length + right.length < MIN_BRANCHES || !left.length || !right.length ||
+               Math.abs(left.length - right.length) > 1 || ratio < 1 / BALANCE || ratio > BALANCE ||
+               lean > MAX_LEAN || b[1] < 0.8 * TILE_H);
+      // The main channel first, so it is painted under its branches' ends.
+      paths.sort(function (a, b) { return a.level - b.level; });
       return paths;
     }
 
-    // The core: charcoal along each path, tapering to its end, the trunk
-    // and the primary branches laid twice for a denser line.
+    // The core: a line along each path, tapering to its end.
     function core(paths, ox, oy) {
       paths.forEach(function (path) {
         var n = path.pts.length;
         var pts = path.pts.map(function (p, i) {
           return P(ox + p[0], oy + p[1]).concat([1 - 0.7 * i / (n - 1)]);
         });
-        for (var pass = 0; pass < (path.weight >= 0.75 ? 2 : 1); pass++) {
-          brush.set("charcoal", "#000000", 1.6 * path.weight);
+        // The main channel in charcoal, laid twice; the branches in
+        // pencils, finer at each level, which stay crisp when thin.
+        for (var pass = 0; pass < (path.level === 0 ? 2 : 1); pass++) {
+          if (path.level === 0) brush.set("charcoal", "#000000", 1.8);
+          else brush.set(path.level === 1 ? "HB" : "2H", "#000000", [0, 1.3, 1, 0.7][path.level]);
           brush.spline(pts, 0);
         }
       });
@@ -178,25 +212,26 @@
     }
 
     // The glow: one continuous watercolour stroke along each path without
-    // its zigzags, bleeding out at its edges; two glazes of slightly
-    // different width along the trunk and each primary branch, one along
-    // each smaller branch.
+    // its zigzags, bleeding out at its edges: two glazes of slightly
+    // different width along the main channel.
     function glow(paths, ox, oy) {
       brush.noStroke();
       paths.forEach(function (path) {
+        // Along the main channel only, as the bright channel of a bolt glows.
+        if (path.level) return;
         // Few points: p5.brush's bleed draws spikes from a polygon with
         // very many (about 260); the washes' blots have 56.
         // Averaged over 2 points each side: it loses the fine zigzags and
         // keeps to the core's sway, and to a short branch's length.
         var pts = resampled(straightened(path.pts, 2), 12);
-        var glazes = path.weight >= 0.75 ? 2 : 1;
+        var glazes = path.level === 0 ? 2 : 1;
         for (var g = 0; g < glazes; g++) {
           brush.fill(0, 0, 0, random(45, 70));
           // Little bleed: on a long, thin polygon a strong bleed fans out
           // in faint spikes to the sides.
           brush.fillBleed(random(0.08, 0.15), "out");
           brush.fillTexture(random(0.2, 0.4), random(0.15, 0.3), true);
-          brush.polygon(ribbon(pts, 36 * path.weight * (g ? 0.65 : 1)).map(function (q) {
+          brush.polygon(ribbon(pts, 32 * (g ? 0.6 : 1)).map(function (q) {
             return P(ox + q[0], oy + q[1]);
           }));
         }

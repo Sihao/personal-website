@@ -1,5 +1,5 @@
 <head>
-    <title>{{ .Title }} | A personal blog</title>
+    <title>{{ if .IsHome }}{{ site.Title }}{{ else }}{{ .Title }} | {{ site.Title }}{{ end }}</title>
     <!-- Fonts: Lora (serif) and Fira Mono (code) from Google Fonts;
          Helvetica Neue (sans) from the system -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -20,7 +20,7 @@
     <meta name="theme-color" content="#14213d">
     <!-- Open Graph -->
     <meta property="og:type" content="blog">
-    <meta property="og:title" content="Sihao Lu | A personal blog">
+    <meta property="og:title" content="{{ site.Title }}">
     <meta property="og:url" content="/">
     <meta property="og:image" content="/img/og-image.jpg">
     <!-- Netlify Identity -->

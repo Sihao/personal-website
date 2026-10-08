@@ -51,6 +51,7 @@
   var CORE = "#14213d";           // --prussian-blue
   var GLOW = "#fca311";           // --orange
   var TURN = 8 * Math.PI / 180;   // a strike's dendrite turns up to this far from the fan's end
+  var STEEP = 50 * Math.PI / 180; // above the horizontal, the flattest a dendrite points
   var LENGTH = 0.95;              // of the distance from the cell body to the fan's end
   var INSET = 0.04;               // of the dendrite's length, its start inside the cell body
 
@@ -280,9 +281,12 @@
         var rot = rnd() * Math.PI * 2;
         if (x < px / 2 || y < px / 2 || x > w - px / 2 || y > h - px / 2) continue;
         if (cells.some(function (c) { return Math.hypot(c.x - x, c.y - y) < 0.6 * (c.px + px) + 3; })) continue;
+        // Towards the fan's far end, but no flatter than STEEP, and no
+        // longer than fits in the canvas.
         var dx = x - fan.end[0], dy = y - fan.end[1];
-        cells.push({ x: x, y: y, px: px, rot: rot, body: body,
-          heading: Math.atan2(dy, dx), len: LENGTH * Math.hypot(dx, dy) });
+        var heading = Math.max(STEEP, Math.atan2(dy, dx));
+        var len = LENGTH * Math.min(Math.hypot(dx, dy), (y - 4) / Math.sin(heading), (x - 4) / Math.cos(heading));
+        cells.push({ x: x, y: y, px: px, rot: rot, body: body, heading: heading, len: len });
       }
       cells.sort(function (a, b) { return Math.hypot(w - a.x, h - a.y) - Math.hypot(w - b.x, h - b.y); });
     }

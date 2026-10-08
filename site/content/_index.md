@@ -1,6 +1,5 @@
 ---
 title: "Sihao Lu"
-subtitle: A personal blog
 role: Postdoctoral Scientist
 blurb:
     heading: Sihao Lu
