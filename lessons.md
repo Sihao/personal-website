@@ -176,3 +176,21 @@ reproduce it.
 - Check: resize 1280 -> 1100 -> 900 -> 700 -> 390 -> 1280 and log each
   drawing's box in its card (scratchpad build/rsz.js); the end matches
   the start.
+
+## tex-linebreak lines ran 1.6x past the right margin
+
+- Symptom: the About paragraph, justified by tex-linebreak, had lines
+  190-390 px wider than the paragraph.
+- Cause: the library measures words on a canvas with the element's computed
+  `font`. `font-variant-ligatures: common-ligatures` makes the `font`
+  shorthand unserialisable, so the library built the string itself with
+  "common-ligatures" in the font-variant slot; the canvas rejected it and
+  measured in its default 10px font (16/10 = 1.6).
+- Fix: drop `font-variant-ligatures` (common ligatures are the default).
+- Also: hypher splits "multi-photon" before the hyphen, and the library
+  adds a "-" at every break inside a word, giving "multi-" / "-photon".
+  tex-justify.js breaks such words only after their own hyphen (as TeX
+  does) and removes the added "-", spreading its width over the line's
+  spaces.
+- Check: scratchpad build/tex.js logs, per line, the gap between the last
+  glyph and the right margin (0-1 px at 1280, 390, 345, 320 px).

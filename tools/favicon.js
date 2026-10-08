@@ -1,6 +1,8 @@
-// Renders the favicon and app icons from the logotype: the logotype on a
-// Prussian-blue square at each size, drawn twice at 48 px and below so the
-// pale watercolour holds up, plus a multi-size favicon.ico (PNG-in-ICO).
+// Renders the favicon and app icons from the logotype: the favicon on a
+// transparent ground, the app icons (which their systems would fill with
+// black or white) on a Prussian-blue square; drawn twice at 48 px and below
+// so the pale watercolour holds up. Plus a multi-size favicon.ico
+// (PNG-in-ICO).
 // Usage (needs playwright-core, and E = a Chrome executable):
 //   E=/path/to/chrome node tools/favicon.js site/static/img/logotype.webp <out-dir>
 // then copy favicon.ico, favicon-32.png, apple-touch-icon.png,
@@ -12,8 +14,8 @@ const fs = require("fs"), path = require("path");
   const b = await chromium.launch({ executablePath: process.env.E });
   const p = await b.newPage();
   const src = "data:image/webp;base64," + fs.readFileSync(logo).toString("base64");
-  // name, size, corner radius (fraction), glyph height (fraction)
-  const specs = [["favicon-16", 16, .18, .9], ["favicon-32", 32, .18, .86], ["favicon-48", 48, .18, .84],
+  // name, size, corner radius (fraction; null: no ground), glyph height (fraction)
+  const specs = [["favicon-16", 16, null, 1], ["favicon-32", 32, null, 1], ["favicon-48", 48, null, 1],
     ["apple-touch-icon", 180, 0, .72], ["android-chrome-192x192", 192, 0, .72], ["android-chrome-512x512", 512, 0, .72],
     ["mstile-150x150", 150, 0, .6]];
   const urls = await p.evaluate(async ([src, specs]) => {
@@ -21,8 +23,10 @@ const fs = require("fs"), path = require("path");
     return specs.map(([name, n, r, g]) => {
       const c = document.createElement("canvas"); c.width = c.height = n;
       const x = c.getContext("2d");
-      x.fillStyle = "#14213d";
-      x.beginPath(); x.roundRect(0, 0, n, n, r * n); x.fill();
+      if (r != null) {
+        x.fillStyle = "#14213d";
+        x.beginPath(); x.roundRect(0, 0, n, n, r * n); x.fill();
+      }
       const h = g * n, w = h * img.width / img.height;
       x.imageSmoothingQuality = "high";
       for (let k = 0; k < (n <= 48 ? 2 : 1); k++) x.drawImage(img, (n - w) / 2, (n - h) / 2, w, h);

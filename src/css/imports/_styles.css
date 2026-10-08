@@ -47,6 +47,23 @@
    for paragraphs; plus 1rem of padding each side. */
 .mw-cards { max-width: 65rem; }
 
+/* The About text on the landing page (short-text.html), set as close to
+   LaTeX as a browser allows. site/static/js/tex-justify.js breaks the lines
+   with TeX's algorithm and hyphenation patterns; until it runs, or if it
+   cannot load, the browser justifies and hyphenates with TeX's limits
+   (words of 5 letters or more, 2 before a break, 3 after) and balances
+   the paragraph's lines where it can (text-wrap: pretty). The font's
+   kerning is on, as in TeX, and so are its standard ligatures (the
+   default; do not set font-variant-ligatures, as tex-linebreak copies the
+   computed font to a canvas to measure words, and a canvas rejects it). */
+.about-text {
+  text-align: justify;
+  hyphens: auto;
+  hyphenate-limit-chars: 5 2 3;
+  text-wrap: pretty;
+  font-kerning: normal;
+}
+
 /* Publication cards on the landing page: upright golden rectangles,
    white, outlined in Prussian blue, each with a drawing in the space
    below its text. The front matter's `card` picks the drawing:
@@ -201,6 +218,7 @@
 
 .site-nav {
   position: relative;
+  z-index: 1;                   /* above the menu's drawer, which follows it */
   min-height: 3.5rem;           /* the bar; washes.js sizes its blots below it */
   padding-right: .5rem;
 }
@@ -226,8 +244,7 @@
 .site-header--over .site-menu { margin-top: calc((3.5rem - 44px) / 2); }
 
 .site-header--over .logotype-panel,
-.site-header--over .menu-button,
-.site-header--over .menu-list { pointer-events: auto; }
+.site-header--over .menu-button { pointer-events: auto; }
 
 /* The header's height, 3.5rem, and 220 px of painting below it. */
 .hero-under-header { height: calc(3.5rem + 220px); }
@@ -299,19 +316,22 @@
   50% { transform: scale(1.03); }
 }
 
-/* The drawer: a Prussian blue panel at the right, from the top of the
-   header down as far as the home page's painting reaches (3.5rem + 220px),
+/* The drawer's frame: at the right of the header, from its top down as
+   far as the home page's painting reaches (3.5rem + 220px). On the home
+   page it is a parallax frame like the painting's: the drawer moves down
+   within it as the painting does, and the frame's foot clips it, so the
+   page slides over both. A strip on the left keeps the drawer's shadow
+   inside the clip. The frame itself lets the pointer through.
+   The drawer: a Prussian blue panel filling the frame,
    see-through, its links below the button and right-aligned with it, in
    sans at reduced strength,
    as the nav's links were; full strength on hover and focus. It opens with a wipe
    from the right (a clip, so the page never grows sideways), at once with
    reduced motion. Hidden, it is out of the tab order. */
 .menu-list {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: min(11rem, 60vw);
-  height: calc(3.5rem + 220px);
+  height: 100%;
+  box-sizing: border-box;
+  width: min-content;           /* the longest word, and the links' padding */
   margin: 0;
   padding: 3.5rem 0 1rem;
   list-style: none;
@@ -322,7 +342,41 @@
   transition: clip-path .3s ease, visibility 0s linear .3s;
 }
 
-.site-menu.is-open .menu-list {
+.menu-drawer {
+  --drawer-h: calc(3.5rem + 220px);
+  --bar-h: calc(.5rem + var(--logo-w) * 288 / 233);   /* .site-header--over nav */
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: var(--drawer-h);
+  padding-left: 2rem;
+  pointer-events: none;
+}
+
+/* On the home page the drawer moves with the painting, but its links (and
+   the line above them) keep their place under the button: they move down
+   within the drawer by the rest of the scroll, (1 - rate) times it,
+   while the bar is stuck to the top of the window, and leave with the bar
+   once the painting's foot takes it. With scroll-driven animations they
+   follow the drawer's parallax timeline (below); elsewhere parallax.js
+   sets --parallax-y, the scroll the frame has had. */
+[data-parallax] .menu-drawer li {
+  translate: 0 calc(var(--parallax-y, 0px) * (1 - var(--parallax-rate)));
+  transform: translate3d(0, calc(-1 * clamp(0px, var(--parallax-y, 0px) - var(--drawer-h) + var(--bar-h), var(--bar-h))), 0);
+}
+
+@keyframes menu-keep {
+  from { translate: 0 0; }
+  to { translate: 0 calc((1 - var(--parallax-rate)) * var(--drawer-h)); }
+}
+
+@keyframes menu-leave {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, calc(-1 * var(--bar-h)), 0); }
+}
+
+.menu-drawer.is-open .menu-list {
+  pointer-events: auto;
   clip-path: inset(0 0 0 -2rem);
   visibility: visible;
   transition: clip-path .3s ease, visibility 0s;
@@ -374,8 +428,10 @@
    Where the browser supports scroll-driven animations, it moves the
    painting itself, in step with the scroll; elsewhere
    site/static/js/parallax.js sets --parallax on every frame. */
-[data-parallax] [data-p5-sketch] { overflow: hidden; }
-[data-parallax] [data-p5-sketch] > * {
+[data-parallax] [data-p5-sketch],
+[data-parallax] [data-parallax-frame] { overflow: hidden; }
+[data-parallax] [data-p5-sketch] > *,
+[data-parallax] [data-parallax-frame] > * {
   transform: translate3d(0, var(--parallax, 0px), 0);
   will-change: transform;
 }
@@ -385,11 +441,18 @@
 }
 
 @supports (animation-timeline: view()) {
-  [data-parallax] [data-p5-sketch] { view-timeline: --parallax block; }
-  [data-parallax] [data-p5-sketch] > * {
+  [data-parallax] [data-p5-sketch],
+  [data-parallax] [data-parallax-frame] { view-timeline: --parallax block; }
+  [data-parallax] [data-p5-sketch] > *,
+  [data-parallax] [data-parallax-frame] > * {
     animation: parallax linear both;
     animation-timeline: --parallax;
     animation-range: exit 0% exit 100%;
+  }
+  [data-parallax] .menu-drawer li {
+    animation: menu-keep linear both, menu-leave linear both;
+    animation-timeline: --parallax, --parallax;
+    animation-range: exit 0% exit 100%, exit calc(var(--drawer-h) - var(--bar-h)) exit 100%;
   }
 }
 
@@ -400,7 +463,7 @@ html { scroll-behavior: smooth; }
    nothing animates; hover states change at once. */
 @media (prefers-reduced-motion: reduce) {
   .menu-list,
-  .site-menu.is-open .menu-list { transition: none; }
+  .menu-drawer.is-open .menu-list { transition: none; }
   .menu-button:hover .menu-icon,
   .menu-button:focus-visible .menu-icon,
   .logotype-panel:hover .wordmark,

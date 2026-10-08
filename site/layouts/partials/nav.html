@@ -4,8 +4,12 @@
      reaches it, then leaves with it. The painting sizes itself below the bar
      (data-sketch-over) and keeps its large light blots away from the
      logotype and the menu button (data-sketch-clear); both are read by
-     site/static/js/sketches/washes.js. */}}
-<header class="site-header{{ if .IsHome }} site-header--over{{ end }}">
+     site/static/js/sketches/washes.js.
+     The menu's drawer is not in the bar but in a frame of its own, as tall
+     as the painting: on the home page it takes part in the painting's
+     parallax (data-parallax; keep the rate in step with layouts/index.html),
+     so the page slides over it as over the painting. */}}
+<header class="site-header{{ if .IsHome }} site-header--over{{ end }}"{{ if .IsHome }} data-parallax style="--parallax-rate: 0.9"{{ end }}>
 <nav class="site-nav flex justify-between items-center bg-prussian-blue divider-accent" aria-label="Main" data-sketch-over>
 
 	<!-- Logo: on its own plane, hanging from the bar over the page below -->
@@ -14,16 +18,18 @@
 	</a>
 	<!-- Room for the logotype -->
 	<div class="logotype-space flex-none" aria-hidden="true"></div>
-	<!-- Menu: three watercolour strokes (tools/menu-icon.html), opening a drawer
-	     as tall as the home page's painting; site/static/js/menu.js opens it -->
+	<!-- Menu: three watercolour strokes (tools/menu-icon.html), opening the
+	     drawer below; site/static/js/menu.js opens it -->
 	<div class="site-menu">
 		<button type="button" class="menu-button" data-sketch-clear="8" aria-expanded="false" aria-controls="site-menu-list" aria-label="Menu">
 			<span class="menu-icon" aria-hidden="true"></span>
 		</button>
-		<ul id="site-menu-list" class="menu-list">
-			<li><a href="/#publications" class="no-underline db">Publications</a></li>
-		</ul>
 	</div>
 
 </nav>
+<div class="menu-drawer" data-parallax-frame>
+	<ul id="site-menu-list" class="menu-list">
+		<li><a href="/#publications" class="no-underline db">Publications</a></li>
+	</ul>
+</div>
 </header>

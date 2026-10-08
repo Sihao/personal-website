@@ -23,11 +23,12 @@
     function update() {
       queued = false;
       items.forEach(function (it) {
-        it.frame = it.frame || it.el.querySelector("[data-p5-sketch]");
+        it.frame = it.frame || it.el.querySelector("[data-p5-sketch], [data-parallax-frame]");
         if (!it.frame) return;
         var box = it.frame.getBoundingClientRect();
-        var shift = Math.min(box.height, Math.max(0, -box.top)) * it.rate;
-        it.frame.style.setProperty("--parallax", shift.toFixed(1) + "px");
+        var scrolled = Math.min(box.height, Math.max(0, -box.top));
+        it.frame.style.setProperty("--parallax", (scrolled * it.rate).toFixed(1) + "px");
+        it.frame.style.setProperty("--parallax-y", scrolled.toFixed(1) + "px");
       });
     }
     function queue() {
