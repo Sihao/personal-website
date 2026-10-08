@@ -10,10 +10,11 @@ import webpackConfig from "./webpack.conf";
 import svgstore from "gulp-svgstore";
 import svgmin from "gulp-svgmin";
 import inject from "gulp-inject";
-import cssnano from "cssnano";
 
 const browserSync = BrowserSync.create();
-const hugoBin = `./bin/hugo.${process.platform === "win32" ? "exe" : process.platform}`;
+// HUGO_BIN (set in netlify.toml) names a newer Hugo to use; the bundled
+// binaries are from 2017 and lack the `site` function and `cascade`.
+const hugoBin = process.env.HUGO_BIN || `./bin/hugo.${process.platform === "win32" ? "exe" : process.platform}`;
 const defaultArgs = ["-d", "../dist", "-s", "site"];
 
 if (process.env.DEBUG) {
@@ -29,8 +30,11 @@ gulp.task("css", () => (
   gulp.src("./src/css/*.css")
     .pipe(postcss([
       cssImport({from: "./src/css/main.css"}),
-      cssnext(),
-      cssnano(),
+      // Custom properties and calc() stay for the browser: the page sets
+      // them at run time (the parallax) and uses clamp() inside calc(),
+      // which the old postcss-calc cannot parse; rem needs a static root
+      // size. No cssnano, for the same reason.
+      cssnext({features: {customProperties: false, calc: false, rem: false}}),
     ]))
     .pipe(gulp.dest("./dist/css"))
     .pipe(browserSync.stream())

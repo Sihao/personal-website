@@ -1,0 +1,314 @@
+<!doctype html>
+<!--
+  Paints the sprite atlas used by site/static/js/lightning-card.js.
+
+  Open this file in a browser with WebGL2 and save the result as
+  site/static/img/lightning.webp. The atlas is white, with alpha = pigment
+  density, so the card can tint each sprite with any colour. It has two
+  rows of BOLTS tiles, each TILE_W x TILE_H, a bolt grown down from the top
+  middle of its tile, its branches fanning out as they split:
+    - row 0: the bolt's core, jagged charcoal and pencil lines that taper,
+             thinner at each split;
+    - row 1: its glow, a continuous watercolour stroke along the main
+             channel, without its zigzags, with p5.brush bleed and texture.
+  Tile i of row 0 and tile i of row 1 hold the same bolt, so the card can
+  draw them over each other and time them apart: the core flickers, the
+  glow lingers.
+
+  Painting is seeded, so the same SEED gives the same atlas.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Lightning atlas</title>
+  <style>
+    body { margin: 16px; font-family: sans-serif; background: #14213d; color: #e5e5e5; }
+    body > canvas, main > canvas { display: none; }
+    img { display: block; max-width: 100%; margin-bottom: 16px; background: #14213d; }
+    a { color: #fca311; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.min.js" integrity="sha384-Cs48F1uukMPysq29xNsf/FZL5ZNGsPfi6lDSGOxo6dypVFFiWO9Q3YbRKoXPPBii" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5.brush@2.2.3/dist/p5.brush.js" integrity="sha384-kwWM3zLjD/CdRap70WTKAsSsnuRP+m8UUSUCTvKE0YT9kCV50Lf9T33B819pu4hh" crossorigin="anonymous"></script>
+</head>
+<body>
+  <p id="status">Painting…</p>
+  <script>
+    // Keep in sync with lightning-card.js.
+    var TILE_W = 320;
+    var TILE_H = 384;
+    var BOLTS = 10;
+
+    var SEED = 7;
+    var BRUSH_SCALE = 1.5;        // brush.scaleBrushes(), as for the washes
+    var MARGIN = 10;              // px kept clear inside each tile
+    var FLOOR = 0.04;             // pigment density below which a pixel is cleared
+
+    var W = BOLTS * TILE_W;
+    var H = 2 * TILE_H;
+
+    // Atlas pixel coordinates -> WEBGL coordinates (origin at the centre).
+    function P(x, y) { return [x - W / 2, y - H / 2]; }
+
+    // A bolt, in tile px, grown as lightning is: each channel is a walk of
+    // short steps, STEP px long or so, each turned at random up to KINK from
+    // the channel's heading, which drifts a little and is kept heading down
+    // (within SPREAD of straight down). Along the way a channel splits: a
+    // branch leaves at a sharp angle, outwards, and grows the same way,
+    // shorter and thinner, and splits in turn, down to DEPTH levels. The
+    // main channel runs from the top middle (where the card puts the cell
+    // body) nearly straight down; its branches spread into a wide fan.
+    // Each path has a weight: the main channel 1, thinner at each level.
+    var STEP = [2, 6];            // px
+    var KINK = 40;                // degrees
+    var SPREAD = 70;              // degrees either side of straight down, for a branch
+    var MAIN_SPREAD = 35;         // the same, for the main channel
+    // The main channel's heading drifts up to MAIN_DRIFT degrees a step and
+    // is pulled back to its course by MAIN_PULL of the difference, so it
+    // wanders in broad bends; its steps turn up to MAIN_KINK. A branch's:
+    // 4 degrees, 0.04, KINK.
+    var MAIN_DRIFT = 9;
+    var MAIN_PULL = 0.03;
+    var MAIN_KINK = 50;
+    var DEPTH = 2;
+    var LEVELS = [                // per level: weight, splits per px, branch length (of the parent's left), angle (degrees)
+      { weight: 1, split: 0.015, len: [0.55, 0.9], angle: [30, 55] },
+      { weight: 0.4, split: 0.012, len: [0.35, 0.6], angle: [25, 50] },
+      { weight: 0.25, split: 0.02, len: [0.3, 0.5], angle: [20, 45] },
+      { weight: 0.15, split: 0, len: [0, 0], angle: [0, 0] }
+    ];
+
+    function inside(p) {
+      return p[0] > MARGIN && p[0] < TILE_W - MARGIN && p[1] > MARGIN && p[1] < TILE_H - MARGIN;
+    }
+
+    // One channel from p, heading `a` (radians, 0 = right, down = HALF_PI),
+    // about `len` px long, at `level`; its branches go into `paths`.
+    function channel(p, a, len, level, paths, from) {
+      var L = LEVELS[level], pts = [p], walked = 0, heading = a, down = HALF_PI;
+      var next = random() < 0.5 ? -1 : 1;   // the main channel's next branch side
+      var lim = radians(level ? SPREAD : MAIN_SPREAD);
+      while (walked < len) {
+        var drift = level ? 4 : MAIN_DRIFT;
+        heading += radians(random(-drift, drift)) + (level ? 0.04 : MAIN_PULL) * (a - heading);
+        heading = constrain(heading, down - lim, down + lim);
+        var kink = level ? KINK : MAIN_KINK;
+        var step = random(STEP[0], STEP[1]), turn = heading + radians(random(-kink, kink));
+        var q = [p[0] + Math.cos(turn) * step, p[1] + Math.sin(turn) * step];
+        if (!inside(q)) break;
+        pts.push(q);
+        p = q;
+        walked += step;
+        if (level < DEPTH && walked > 0.08 * len && random() < L.split * step) {
+          var N = LEVELS[level + 1];
+          // The main channel's branches alternate sides, so the bolt is
+          // balanced left and right; a branch's go outwards, away from
+          // straight down, more often than not.
+          var side;
+          if (!level) {
+            side = next;
+            next = -next;
+          } else {
+            side = heading < down ? -1 : heading > down ? 1 : (random() < 0.5 ? -1 : 1);
+            if (random() < 0.3) side = -side;
+          }
+          channel(p, heading + side * radians(random(L.angle[0], L.angle[1])),
+            (len - walked) * random(L.len[0], L.len[1]) + 12, level + 1, paths, side);
+        }
+      }
+      if (pts.length > 2) paths.push({ pts: pts, weight: L.weight, level: level, side: from || 0 });
+    }
+
+    // Grown again until the main channel has at least MIN_BRANCHES, at
+    // least one on each side, at most one more on one side than the other,
+    // and their reach (summed from base to tip) within BALANCE of each
+    // other, and runs from tip to tip within MAX_LEAN of straight down, so
+    // its sway does not tip the whole bolt over.
+    var MIN_BRANCHES = 2;
+    var BALANCE = 2;              // most the branches' reach on one side may exceed the other's
+    var MAX_LEAN = 12;            // degrees
+    function bolt() {
+      var paths;
+      do {
+        paths = [];
+        channel([TILE_W * random(0.47, 0.53), MARGIN + 1], HALF_PI + radians(random(-5, 5)), TILE_H, 0, paths);
+        var main = paths.filter(function (p) { return p.level === 0; })[0], a = main.pts[0], b = main.pts[main.pts.length - 1];
+        var lean = degrees(Math.abs(Math.atan2(b[0] - a[0], b[1] - a[1])));
+        var left = paths.filter(function (p) { return p.level === 1 && p.side < 0; });
+        var right = paths.filter(function (p) { return p.level === 1 && p.side > 0; });
+        var reach = function (list) {
+          return list.reduce(function (t, p) {
+            var u = p.pts[0], v = p.pts[p.pts.length - 1];
+            return t + Math.hypot(v[0] - u[0], v[1] - u[1]);
+          }, 0);
+        };
+        var ratio = reach(left) / (reach(right) || 1);
+      } while (left.length + right.length < MIN_BRANCHES || !left.length || !right.length ||
+               Math.abs(left.length - right.length) > 1 || ratio < 1 / BALANCE || ratio > BALANCE ||
+               lean > MAX_LEAN || b[1] < 0.8 * TILE_H);
+      // The main channel first, so it is painted under its branches' ends.
+      paths.sort(function (a, b) { return a.level - b.level; });
+      return paths;
+    }
+
+    // The core: a line along each path, tapering to its end.
+    function core(paths, ox, oy) {
+      paths.forEach(function (path) {
+        var n = path.pts.length;
+        var pts = path.pts.map(function (p, i) {
+          return P(ox + p[0], oy + p[1]).concat([1 - 0.7 * i / (n - 1)]);
+        });
+        // The main channel in charcoal, laid twice; the branches in
+        // pencils, finer at each level, which stay crisp when thin.
+        for (var pass = 0; pass < (path.level === 0 ? 2 : 1); pass++) {
+          if (path.level === 0) brush.set("charcoal", "#000000", 1.8);
+          else brush.set(path.level === 1 ? "HB" : "2H", "#000000", [0, 1.3, 1, 0.7][path.level]);
+          brush.spline(pts, 0);
+        }
+      });
+    }
+
+    // Points every `step` px along a path, and its last point.
+    function resampled(pts, step) {
+      var out = [pts[0]], carry = 0;
+      for (var i = 1; i < pts.length; i++) {
+        var p = pts[i - 1], q = pts[i], len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        for (var d = step - carry; d < len; d += step) {
+          out.push([p[0] + (q[0] - p[0]) * d / len, p[1] + (q[1] - p[1]) * d / len]);
+        }
+        carry = (carry + len) % step;
+      }
+      out.push(pts[pts.length - 1]);
+      return out;
+    }
+
+    // The path with each point the mean of its neighbours up to k away:
+    // the bolt's line without its zigzags, which the glow follows.
+    function straightened(pts, k) {
+      return pts.map(function (p, i) {
+        var x = 0, y = 0, n = 0;
+        for (var j = Math.max(0, i - k); j <= Math.min(pts.length - 1, i + k); j++) {
+          x += pts[j][0];
+          y += pts[j][1];
+          n++;
+        }
+        return [x / n, y / n];
+      });
+    }
+
+    // A ragged ribbon around a path, `width` px across at its start and
+    // narrowing towards its end, with rounded ends.
+    function ribbon(pts, width) {
+      var left = [], right = [], n = pts.length, phase = random(1000);
+      for (var i = 0; i < n; i++) {
+        var p = pts[i], q = pts[Math.min(n - 1, i + 1)], r = pts[Math.max(0, i - 1)];
+        var dx = q[0] - r[0], dy = q[1] - r[1], len = Math.hypot(dx, dy) || 1;
+        var t = i / (n - 1);
+        var hw = width / 2 * (1 - 0.5 * t) * (0.8 + 0.4 * noise(phase + i * 0.05)) *
+          Math.sqrt(Math.min(1, 6 * Math.min(t, 1 - t) + 0.15));
+        left.push([p[0] - dy / len * hw, p[1] + dx / len * hw]);
+        right.push([p[0] + dy / len * hw, p[1] - dx / len * hw]);
+      }
+      return left.concat(right.reverse());
+    }
+
+    // The glow: one continuous watercolour stroke along each path without
+    // its zigzags, bleeding out at its edges: two glazes of slightly
+    // different width along the main channel.
+    function glow(paths, ox, oy) {
+      brush.noStroke();
+      paths.forEach(function (path) {
+        // Along the main channel only, as the bright channel of a bolt glows.
+        if (path.level) return;
+        // Few points: p5.brush's bleed draws spikes from a polygon with
+        // very many (about 260); the washes' blots have 56.
+        // Averaged over 2 points each side: it loses the fine zigzags and
+        // keeps to the core's sway, and to a short branch's length.
+        var pts = resampled(straightened(path.pts, 2), 12);
+        var glazes = path.level === 0 ? 2 : 1;
+        for (var g = 0; g < glazes; g++) {
+          brush.fill(0, 0, 0, random(45, 70));
+          // Little bleed: on a long, thin polygon a strong bleed fans out
+          // in faint spikes to the sides.
+          brush.fillBleed(random(0.08, 0.15), "out");
+          brush.fillTexture(random(0.2, 0.4), random(0.15, 0.3), true);
+          brush.polygon(ribbon(pts, 32 * (g ? 0.6 : 1)).map(function (q) {
+            return P(ox + q[0], oy + q[1]);
+          }));
+        }
+      });
+      brush.noFill();
+    }
+
+    function setup() {
+      createCanvas(W, H, WEBGL);
+      pixelDensity(1);
+      randomSeed(SEED);
+      noiseSeed(SEED);
+      background(255);
+      brush.scaleBrushes(BRUSH_SCALE);
+      brush.noField();
+      for (var i = 0; i < BOLTS; i++) {
+        var paths = bolt();
+        core(paths, i * TILE_W, 0);
+        glow(paths, i * TILE_W, TILE_H);
+      }
+    }
+
+    function ramp(e0, e1, x) {
+      var t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+      return t * t * (3 - 2 * t);
+    }
+
+    // p5.brush composites the painting when setup() returns. Each tile is
+    // normalised to its own densest pixel and faded out at its border, so
+    // no sprite carries a seam from its neighbour.
+    function draw() {
+      noLoop();
+      loadPixels();
+      var d = pixelDensity();
+      var out = document.createElement("canvas");
+      out.width = W;
+      out.height = H;
+      var ctx = out.getContext("2d");
+      var img = ctx.createImageData(W, H);
+      for (var row = 0; row < 2; row++) {
+        for (var i = 0; i < BOLTS; i++) {
+          var ox = i * TILE_W, oy = row * TILE_H;
+          var max = 0, x, y, k, v;
+          var dens = new Float32Array(TILE_W * TILE_H);
+          for (y = 0; y < TILE_H; y++) {
+            for (x = 0; x < TILE_W; x++) {
+              k = 4 * ((oy + y) * d * W * d + (ox + x) * d);
+              // The faintest pigment, left by the bleed far from the
+              // stroke, is cleared.
+              v = Math.max(0, 1 - (pixels[k] + pixels[k + 1] + pixels[k + 2]) / 765 - FLOOR) *
+                ramp(0, 6, Math.min(x, y, TILE_W - 1 - x, TILE_H - 1 - y));
+              dens[y * TILE_W + x] = v;
+              max = Math.max(max, v);
+            }
+          }
+          for (y = 0; y < TILE_H; y++) {
+            for (x = 0; x < TILE_W; x++) {
+              var q = 4 * ((oy + y) * W + ox + x);
+              img.data[q] = img.data[q + 1] = img.data[q + 2] = 255;
+              img.data[q + 3] = Math.round(255 * Math.pow(dens[y * TILE_W + x] / (max || 1), 0.85));
+            }
+          }
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      var url = out.toDataURL("image/webp", 0.9);
+      window.atlasDataURL = url;
+
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = "lightning.webp";
+      link.textContent = "Download lightning.webp";
+      document.getElementById("status").replaceChildren(link);
+      var preview = document.createElement("img");
+      preview.src = url;
+      document.body.appendChild(preview);
+    }
+  </script>
+</body>
+</html>

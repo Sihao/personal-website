@@ -1,17 +1,26 @@
 <head>
-    <title>{{ .Title }} | A personal blog</title>
+    <title>{{ if .IsHome }}{{ site.Title }}{{ else }}{{ .Title }} | {{ site.Title }}{{ end }}</title>
+    <!-- Fonts: Lora (serif) and Fira Mono (code) from Google Fonts;
+         Helvetica Neue (sans) from the system -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Mono&family=Lora:ital,wght@0,400..700;1,400..700&display=swap">
     <link rel="stylesheet" href="/css/main.css" />
+    {{/* Before the drawings that register with it. */}}
+    <script defer src="/js/in-view.js"></script>
     <meta charset="utf-8">
     <meta http-equiv="x-ua-compatible" content="ie=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- Favicons -->
+    <!-- The logotype (site/static/img/logotype.webp), made by tools/favicon.js -->
+    <link rel="icon" href="/img/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/img/apple-touch-icon.png">
-    <link rel="icon" type="image/png" href="/img/favicon.ico">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#14213d">
     <!-- Open Graph -->
     <meta property="og:type" content="blog">
-    <meta property="og:title" content="Sihao Lu | A personal blog">
+    <meta property="og:title" content="{{ site.Title }}">
     <meta property="og:url" content="/">
     <meta property="og:image" content="/img/og-image.jpg">
     <!-- Netlify Identity -->

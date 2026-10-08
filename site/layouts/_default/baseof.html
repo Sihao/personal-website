@@ -5,6 +5,7 @@
     {{ partial "nav" . }}
     {{ block "main" . }}{{ end }} 
     {{ partial "footer" . }} 
+    <script defer src="/js/menu.js"></script>
     {{ if .Scratch.Get "p5" }}
     <script defer src="https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.min.js" integrity="sha384-Cs48F1uukMPysq29xNsf/FZL5ZNGsPfi6lDSGOxo6dypVFFiWO9Q3YbRKoXPPBii" crossorigin="anonymous"></script>
     <script defer src="/js/p5-mount.js"></script>

@@ -1,0 +1,215 @@
+<!doctype html>
+<!--
+  Paints the sprite atlas used by site/static/js/planes.js.
+
+  Open this file in a browser with WebGL2 and save the result as
+  site/static/img/planes.webp. The atlas is white, with alpha = pigment
+  density, so planes.js can tint each layer with any colour. It holds, in
+  its first row of PLANE px tiles:
+    - PLANES checkerboards, one per plane: a watercolour square on every
+      other cell of a GRID_N x GRID_N grid, after Alfred Jensen's number grids;
+    - one grid, ruled by hand in pencil, shared by the planes;
+  and in its second row of CELL px tiles:
+    - WASHES square washes, each filling one cell when a neuron flashes;
+    - NEURONS abstract pyramidal neurons, upright: a soma, an apical
+      dendrite and two or three basal ones. planes.js turns each one.
+
+  Painting is seeded, so the same SEED gives the same atlas.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Planes atlas</title>
+  <style>
+    body { margin: 16px; font-family: sans-serif; background: #fbfaf5; color: #14213d; }
+    body > canvas, main > canvas { display: none; }
+    img { display: block; max-width: 100%; margin-bottom: 16px; background: #14213d; }
+    a { color: #14213d; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.min.js" integrity="sha384-Cs48F1uukMPysq29xNsf/FZL5ZNGsPfi6lDSGOxo6dypVFFiWO9Q3YbRKoXPPBii" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5.brush@2.2.3/dist/p5.brush.js" integrity="sha384-kwWM3zLjD/CdRap70WTKAsSsnuRP+m8UUSUCTvKE0YT9kCV50Lf9T33B819pu4hh" crossorigin="anonymous"></script>
+</head>
+<body>
+  <p id="status">Painting…</p>
+  <script>
+    // Keep in sync with planes.js.
+    var PLANE = 512;              // px, one plane tile
+    var PLANES = 3;
+    var GRID_N = 9;                 // cells along each side of a plane
+    var MARGIN = 0.04;            // paper outside the grid, as a fraction of the plane
+    var CELL = 96;                // px, one wash or neuron tile
+    var WASHES = 8;
+    var NEURONS = 8;
+
+    var SEED = 5;
+    var BRUSH_SCALE = 1;
+
+    var W = (PLANES + 1) * PLANE;
+    var H = PLANE + CELL;
+
+    // Atlas pixel coordinates -> WEBGL coordinates (origin at the centre).
+    function P(x, y) { return [x - W / 2, y - H / 2]; }
+
+    // A square with a wobbly, hand-cut edge, centred on (cx, cy).
+    function cutSquare(cx, cy, s, wobble) {
+      var pts = [];
+      var steps = 6;
+      for (var side = 0; side < 4; side++) {
+        for (var k = 0; k < steps; k++) {
+          var u = k / steps - 0.5;
+          var q = [[u, -0.5], [0.5, u], [-u, 0.5], [-0.5, -u]][side];
+          pts.push(P(cx + q[0] * s + random(-1, 1) * wobble * s,
+                     cy + q[1] * s + random(-1, 1) * wobble * s));
+        }
+      }
+      return pts;
+    }
+
+    // Two or three glazes of watercolour, slightly shifted, so the square
+    // shows layered pigment and a soft, uneven edge.
+    function wash(cx, cy, s, bleed, opacity) {
+      brush.noStroke();
+      var glazes = floor(random(2, 4));
+      for (var g = 0; g < glazes; g++) {
+        brush.fill(0, 0, 0, random(opacity[0], opacity[1]));
+        brush.fillBleed(random(bleed[0], bleed[1]), "out");
+        brush.fillTexture(random(0.25, 0.45), random(0.15, 0.3), true);
+        brush.polygon(cutSquare(cx + random(-0.02, 0.02) * s, cy + random(-0.02, 0.02) * s,
+                             s * random(0.93, 1), 0.025));
+      }
+      brush.noFill();
+    }
+
+    function checkerboard(t) {
+      var m = MARGIN * PLANE, cell = (PLANE - 2 * m) / GRID_N;
+      for (var i = 0; i < GRID_N; i++) {
+        for (var j = 0; j < GRID_N; j++) {
+          if ((i + j) % 2) continue;
+          wash(t * PLANE + m + (i + 0.5) * cell, m + (j + 0.5) * cell, cell * 0.8, [0.06, 0.14], [90, 150]);
+        }
+      }
+    }
+
+    function ruleGrid() {
+      var x0 = PLANES * PLANE;
+      var m = MARGIN * PLANE, cell = (PLANE - 2 * m) / GRID_N;
+      brush.wiggle(0.4);
+      for (var g = 0; g <= GRID_N; g++) {
+        var a = m + g * cell;
+        brush.set("HB", "#000000", 1);
+        brush.line(P(x0 + a + random(-1, 1), m - 3)[0], P(0, m - 3)[1],
+                   P(x0 + a + random(-1, 1), 0)[0], P(0, PLANE - m + 3)[1]);
+        brush.line(P(x0 + m - 3, 0)[0], P(0, a + random(-1, 1))[1],
+                   P(x0 + PLANE - m + 3, 0)[0], P(0, a + random(-1, 1))[1]);
+      }
+      brush.noField();
+    }
+
+    function cellWash(k) {
+      wash(k * CELL + CELL / 2, PLANE + CELL / 2, CELL * 0.74, [0.12, 0.25], [80, 130]);
+    }
+
+    function neuron(k) {
+      var cx = (WASHES + k) * CELL + CELL / 2, cy = PLANE + CELL / 2 + CELL * 0.04;
+      var r = CELL * 0.14;
+      // Soma: a rounded triangle, point up.
+      var soma = [];
+      for (var a = 0; a < 24; a++) {
+        var th = a / 24 * TWO_PI - HALF_PI;
+        var f = 1 + 0.16 * Math.cos(3 * (th + HALF_PI)) + random(-0.04, 0.04);
+        soma.push(P(cx + Math.cos(th) * r * f * 0.9, cy + Math.sin(th) * r * f));
+      }
+      brush.noStroke();
+      brush.fill(0, 0, 0, 170);
+      brush.fillBleed(0.08, "out");
+      brush.fillTexture(0.2, 0.1, true);
+      brush.polygon(soma);
+      brush.noFill();
+
+      brush.set("marker", "#000000", random(1.3, 1.6));
+      // Apical dendrite, up to the edge of the cell, with a little bend.
+      brush.spline([P(cx, cy - r), P(cx + random(-0.05, 0.05) * CELL, cy - CELL * 0.24),
+                    P(cx + random(-0.08, 0.08) * CELL, cy - CELL * 0.43)], 0.6);
+      // Basal dendrites, fanning down.
+      var basal = floor(random(2, 4));
+      for (var b = 0; b < basal; b++) {
+        var ang = HALF_PI + (b - (basal - 1) / 2) * 0.85 + random(-0.2, 0.2);
+        var len = CELL * random(0.26, 0.36);
+        brush.spline([P(cx + Math.cos(ang) * r * 0.5, cy + Math.sin(ang) * r * 0.5),
+                      P(cx + Math.cos(ang + random(-0.15, 0.15)) * len * 0.6, cy + Math.sin(ang) * len * 0.6),
+                      P(cx + Math.cos(ang) * len, cy + Math.sin(ang) * len)], 0.6);
+      }
+    }
+
+    function setup() {
+      createCanvas(W, H, WEBGL);
+      pixelDensity(1);
+      randomSeed(SEED);
+      noiseSeed(SEED);
+      background(255);
+      brush.scaleBrushes(BRUSH_SCALE);
+      brush.noField();
+      for (var t = 0; t < PLANES; t++) checkerboard(t);
+      ruleGrid();
+      for (var k = 0; k < WASHES; k++) cellWash(k);
+      for (k = 0; k < NEURONS; k++) neuron(k);
+    }
+
+    function ramp(e0, e1, x) {
+      var t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+      return t * t * (3 - 2 * t);
+    }
+
+    // p5.brush composites the painting when setup() returns. Each tile is
+    // normalised to its own densest pixel and faded out at its border, so
+    // no sprite carries a seam from its neighbour.
+    function draw() {
+      noLoop();
+      loadPixels();
+      var d = pixelDensity();
+      var tiles = [];
+      for (var t = 0; t <= PLANES; t++) tiles.push([t * PLANE, 0, PLANE, 0.8]);
+      for (var k = 0; k < WASHES + NEURONS; k++) tiles.push([k * CELL, PLANE, CELL, 0.85]);
+
+      var out = document.createElement("canvas");
+      out.width = W;
+      out.height = H;
+      var ctx = out.getContext("2d");
+      var img = ctx.createImageData(W, H);
+      tiles.forEach(function (tile) {
+        var ox = tile[0], oy = tile[1], s = tile[2], gamma = tile[3];
+        var max = 0, x, y, v;
+        var dens = new Float32Array(s * s);
+        for (y = 0; y < s; y++) {
+          for (x = 0; x < s; x++) {
+            var k = 4 * ((oy + y) * d * W * d + (ox + x) * d);
+            v = (1 - (pixels[k] + pixels[k + 1] + pixels[k + 2]) / 765) *
+              ramp(0, 3, Math.min(x, y, s - 1 - x, s - 1 - y));
+            dens[y * s + x] = v;
+            max = Math.max(max, v);
+          }
+        }
+        for (y = 0; y < s; y++) {
+          for (x = 0; x < s; x++) {
+            var q = 4 * ((oy + y) * W + ox + x);
+            img.data[q] = img.data[q + 1] = img.data[q + 2] = 255;
+            img.data[q + 3] = Math.round(255 * Math.pow(dens[y * s + x] / (max || 1), gamma));
+          }
+        }
+      });
+      ctx.putImageData(img, 0, 0);
+      var url = out.toDataURL("image/webp", 0.9);
+      window.atlasDataURL = url;
+
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = "planes.webp";
+      link.textContent = "Download planes.webp";
+      document.getElementById("status").replaceChildren(link);
+      var preview = document.createElement("img");
+      preview.src = url;
+      document.body.appendChild(preview);
+    }
+  </script>
+</body>
+</html>

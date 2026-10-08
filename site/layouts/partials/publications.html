@@ -1,11 +1,11 @@
-<div class="bg-off-white pv4">
+<div id="publications" class="bg-off-white pt3 pb4">
 	<div class="ph3 mw-cards center">
 
-		<h2 class="f3 b lh-title mb3">Publications</h2>
+		<h2 class="f2 fw6 lh-title mb3">Publications</h2>
 
-		<div class="card-grid flex flex-wrap mb3">
-			{{ range first 6 (where .Data.Pages.ByDate.Reverse "Type" "publications") }}
-				<div class="pr3-m pv2 w-100 w-50-m w-third-l flex">
+		<div class="card-grid publication-grid mb3">
+			{{ range first 6 (where site.RegularPages.ByDate.Reverse "Type" "publications") }}
+				<div class="pr3-m pv2 flex">
 					{{ .Render "li" }}
 				</div>
 			{{ end }}
@@ -13,4 +13,13 @@
 
 	</div>
 </div>
+<dialog class="publication-dialog" aria-labelledby="publication-dialog-title" tabindex="-1">
+	<button type="button" class="publication-dialog-close primary" aria-label="Close">×</button>
+	<div class="publication-dialog-body pa4"></div>
+</dialog>
+<script defer src="/js/publication-cards.js"></script>
 <script defer src="/js/usv-card.js"></script>
+<script defer src="/js/planes.js"></script>
+<script defer src="/js/zebrafish.js"></script>
+<script defer src="/js/blots-card.js"></script>
+<script defer src="/js/lightning-card.js"></script>

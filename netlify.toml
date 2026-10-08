@@ -3,6 +3,10 @@
   publish = "dist"
 [build.environment]
   YARN_VERSION = "1.3.2"
+  # The site is built and tested with this Hugo; gulpfile.babel.js uses it
+  # through HUGO_BIN in place of the bundled 2017 binary.
+  HUGO_VERSION = "0.109.0"
+  HUGO_BIN = "hugo"
 
 [context.deploy-preview]
   command = "yarn build-preview"

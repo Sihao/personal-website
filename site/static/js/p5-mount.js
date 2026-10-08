@@ -8,7 +8,11 @@
 // sketch can fall back. p5.brush hooks into every p5 instance on the page and
 // expects a WEBGL canvas, so every sketch on such a page must use WEBGL.
 //
-// Sketches pause while scrolled out of view.
+// Motion policy, shared by every animation on the site: with reduced
+// motion a sketch shows its end state and never moves; otherwise it rests
+// still and moves only while hovered (or, on touch screens, after a tap,
+// and while it is the drawing most in view: site/static/js/in-view.js).
+// Each sketch starts and stops its own loop to obey this.
 (function () {
   "use strict";
 
@@ -67,18 +71,9 @@
       var libs = {};
       requires.forEach(function (lib, i) { libs[lib] = results[i]; });
 
-      var instance = new window.p5(function (p) {
+      new window.p5(function (p) {
         sketch(p, { el: el, reducedMotion: reducedMotion, libs: libs });
       }, el);
-
-      if (!reducedMotion && "IntersectionObserver" in window) {
-        new IntersectionObserver(function (entries) {
-          entries.forEach(function (entry) {
-            if (entry.isIntersecting) instance.loop();
-            else instance.noLoop();
-          });
-        }).observe(el);
-      }
     });
   }
 

@@ -1,6 +1,16 @@
-<a href="{{ .Permalink | safeURL }}" class="publication-card relative no-underline pa3 bg-white br1 mb2 flex flex-column raise w-100">
-	<h2 class="f3 b lh-title mb1 primary">{{ .Title }}</h2>
-	<div class="grey-3 lh-title mb4">{{ with .Params.journal }}{{ . }}, {{ end }}{{ .Date.Format "2006" }}</div>
-	<div class="publication-more link b primary mb0">Read more →</div>
-	<canvas class="publication-usv" aria-hidden="true"></canvas>
-</a>
+<article class="publication-card{{ with .Params.card }} publication-card--{{ . }}{{ end }} relative pa3 bg-white br1 mb2 flex flex-column w-100">
+	<div class="eyebrow grey-3">{{ with .Params.journal }}{{ . }} · {{ end }}{{ .Date.Format "2006" }}</div>
+	{{ with .Params.volume }}<div class="fine grey-3">{{ . }}</div>{{ end }}
+	<h2 class="f4 lh-title mt2 mb3 primary">{{ .Title }}</h2>
+	{{ with .Params.authors }}<div class="authors f6 lh-copy grey-3 mb4">{{ . | markdownify }}</div>{{ end }}
+	<template class="publication-abstract">
+		<div class="publication-abstract-text f6 lh-copy mt4">{{ .Content }}</div>
+		{{ with .Params.doi }}<p class="fine mt3 mb0"><a class="primary" href="https://doi.org/{{ . }}">doi:{{ . }}</a></p>{{ end }}
+	</template>
+	<button type="button" class="publication-more link b f6 primary mb0" aria-haspopup="dialog">Read abstract →</button>
+	{{ if in (slice "usv" "computer") .Params.card }}<canvas class="publication-usv"{{ if eq .Params.card "computer" }} data-mouse="computer"{{ end }} aria-hidden="true"></canvas>{{ end }}
+	{{ if eq .Params.card "zebrafish" }}<div class="publication-drawing" data-drawing="zebrafish" data-fit="card" aria-hidden="true"></div>{{ end }}
+	{{ if eq .Params.card "lightning" }}<canvas class="publication-lightning" aria-hidden="true"></canvas>{{ end }}
+	{{ if eq .Params.card "astrocytes" }}<canvas class="publication-blots" aria-hidden="true"></canvas>{{ end }}
+	{{ if eq .Params.card "planes" }}<div class="publication-planes" data-three-sketch="planes" data-fit="card" aria-hidden="true"></div>{{ end }}
+</article>

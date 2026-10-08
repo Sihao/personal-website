@@ -8,10 +8,10 @@
   & a {
     transition: var(--hover-transition);
   }
-  & a:focus {
+  & a:focus-visible {
     box-shadow: inset 0 0 0 2px var(--accent);
   }
-  & ul a:hover, & ul a:focus {
+  & ul a:hover, & ul a:focus-visible {
     box-shadow: inset 0 -4px 0 var(--accent);
   }
 }
@@ -22,7 +22,7 @@
   & a {
     transition: var(--hover-transition);
   }
-  & ul a:hover, & ul a:focus {
+  & ul a:hover, & ul a:focus-visible {
     box-shadow: inset 0 -4px 0 var(--primary);
   }
 }
@@ -36,38 +36,147 @@
   & a {
     transition: var(--hover-transition);
   }
-  & ul a:hover, & ul a:focus {
+  & ul a:hover, & ul a:focus-visible {
     box-shadow: inset 0 -4px 0 var(--accent);
   }
 }
 
-.hr-divider-accent {
-  height: 4px;
-  background: var(--accent);
-  border: 0px;
-  padding: 0px;
-  margin: 0px;
+/* Width of the landing page's card grid and the About block above it:
+   three cards of 20rem with 1rem gutters, so that the About paragraph,
+   which spans the second and third cards, fills the site's 40rem measure
+   for paragraphs; plus 1rem of padding each side. */
+.mw-cards { max-width: 65rem; }
+
+/* The About text on the landing page (short-text.html) and the abstracts
+   in the publication popup, set as close to LaTeX as a browser allows. site/static/js/tex-justify.js breaks the lines
+   with TeX's algorithm and hyphenation patterns; until it runs, or if it
+   cannot load, the browser justifies and hyphenates with TeX's limits
+   (words of 5 letters or more, 2 before a break, 3 after) and balances
+   the paragraph's lines where it can (text-wrap: pretty). The font's
+   kerning is on, as in TeX, and so are its standard ligatures (the
+   default; do not set font-variant-ligatures, as tex-linebreak copies the
+   computed font to a canvas to measure words, and a canvas rejects it). */
+.about-text,
+.publication-abstract-text p {
+  text-align: justify;
+  hyphens: auto;
+  hyphenate-limit-chars: 5 2 3;
+  text-wrap: pretty;
+  font-kerning: normal;
 }
 
-/* Width of the landing page's card grid and the About block above it:
-   three cards of 15.5rem with 1rem gutters, so that the About paragraph,
-   which spans the second and third cards, keeps the site's 32rem measure
-   for paragraphs; plus 1rem of padding each side. */
-.mw-cards { max-width: 50.5rem; }
-
 /* Publication cards on the landing page: upright golden rectangles,
-   white, outlined in Prussian blue, with a small mouse from the
-   publication's painting in the bottom right corner
-   (site/static/img/mouse-card.webp, rendered by tools/mouse-card.html),
-   and syllables rising from its mouth, animated on a canvas over the
-   corner by site/static/js/usv-card.js. "Read more" sits on the bottom edge of the padding, level with
-   the bottom of the mouse. One card per row on phones, two on tablets,
-   three on wider screens. */
+   white, outlined in Prussian blue, each with a drawing in the space
+   below its text. The front matter's `card` picks the drawing:
+   - usv: a small mouse from the publication's painting in the bottom
+     right corner (site/static/img/mouse-card.webp, rendered by
+     tools/mouse-card.html), and syllables rising from its mouth,
+     animated on a canvas over the corner by site/static/js/usv-card.js;
+   - computer: as usv, with a cartoon computer for the mouse
+     (site/static/img/computer-card.webp, rendered by
+     tools/mouse-card.html?mouse=computer);
+   - zebrafish: a larval zebrafish in its wake, with neuromasts and the
+     brain flashing, drawn by site/static/js/zebrafish.js, which sets the
+     drawing's box;
+   - planes: three imaging planes in isometric view, with neurons
+     flashing on them, drawn by site/static/js/planes.js.
+   "Read abstract" sits on the bottom edge of the padding, level with the
+   bottom of the mouse. One card per row on phones, two on tablets,
+   three on wider screens. In one column a golden card would be far taller
+   than its text, so there the card fits its text, with room above "Read
+   abstract" for the drawing.
+   A click on a card opens a popup with the abstract and the DOI
+   (site/static/js/publication-cards.js). */
+.publication-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
 .publication-card {
   box-sizing: border-box;
-  aspect-ratio: 1 / 1.618;
   border: 2px solid var(--prussian-blue);
+  background: var(--white);
+  cursor: pointer;
+}
+
+/* The popup: the card's text, then the abstract and the DOI, over the
+   page dimmed in Prussian blue. */
+.publication-dialog {
+  box-sizing: border-box;
+  width: calc(100% - 2rem);
+  max-width: 42rem;
+  max-height: calc(100% - 2rem);
+  padding: 0;
+  border: 2px solid var(--prussian-blue);
+  border-radius: var(--border-radius);   /* as the cards' .br1 */
+  background: var(--white);
+  color: inherit;
+}
+
+/* It takes focus itself on opening, not the close button. */
+.publication-dialog:focus { outline: 0; }
+
+.publication-dialog::backdrop { background: rgba(20, 33, 61, .55); }
+
+.publication-dialog[open] { animation: publication-dialog-in .2s ease-out; }
+
+@keyframes publication-dialog-in {
+  from { opacity: 0; transform: translateY(.5rem); }
+}
+
+.publication-dialog-close {
+  position: absolute;
+  top: .25rem;
+  right: .25rem;
+  width: 44px;
+  height: 44px;
+  background: none;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.publication-dialog-body h2 { padding-right: 2rem; }
+
+.publication-card--usv {
   background: var(--white) url(/img/mouse-card.webp) no-repeat right var(--spacing-medium) bottom var(--spacing-medium) / 80px auto;
+}
+
+.publication-card--computer {
+  background: var(--white) url(/img/computer-card.webp) no-repeat right var(--spacing-medium) bottom var(--spacing-medium) / 80px auto;
+}
+
+/* usv-card.js draws the mouse on its canvas, to move the ears. */
+.publication-card--usv.usv-live,
+.publication-card--computer.usv-live { background-image: none; }
+
+/* The planes fill the card's inner width, from below the text to above
+   "Read more"; planes.js sets the top and the height. */
+.publication-planes {
+  position: absolute;
+  left: var(--spacing-medium);
+  right: var(--spacing-medium);
+  pointer-events: none;
+}
+
+/* blots-card.js sets the size: from below the text down to the bottom
+   right corner, as for the mouse's canvas. */
+.publication-blots {
+  position: absolute;
+  right: var(--spacing-medium);
+  bottom: var(--spacing-medium);
+  pointer-events: none;
+}
+
+/* lightning-card.js sets the place and the size: below the text, above
+   "Read abstract", across the card's inner width. */
+.publication-lightning {
+  position: absolute;
+  pointer-events: none;
+}
+
+.publication-drawing {
+  position: absolute;
+  pointer-events: none;
 }
 
 .publication-usv {
@@ -77,12 +186,23 @@
   pointer-events: none;
 }
 
+/* Above the drawing, which may run under it. */
 .publication-more {
+  position: relative;
+  z-index: 1;
+  align-self: flex-start;
   margin-top: auto;
+  padding: 11rem 0 0;
+  background: none;
   line-height: 1;
+  text-align: left;
 }
 
 @media (--breakpoint-medium) {
+  .publication-grid { grid-template-columns: repeat(2, 1fr); }
+  .publication-card { aspect-ratio: 1 / 1.618; }
+  .publication-more { padding-top: 0; }
+
   /* The grid of the landing page's publication cards, which the About
      block above them shares. Each cell has a right gutter; the row's
      negative margin takes up the last one, so the row spans the full
@@ -90,14 +210,287 @@
   .card-grid { margin-right: calc(-1 * var(--spacing-medium)); }
 }
 
-/* Publication pages: the painting is a tall, narrow scroll beside the
-   text on wider screens, and a short band above it on phones. */
-.publication-sketch { height: 220px; }
+@media (--breakpoint-large) {
+  .publication-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Header: the bar, with the logotype on the left, a cursive character
+   painted by tools/logotype.html, on its own plane, with no box. It hangs
+   from just inside the top of the bar over its lower edge and the top of
+   the page below, so the logotype can be large while the bar keeps its
+   height. On the right, the menu: a button whose icon is three watercolour
+   strokes (tools/menu-icon.html), opening a drawer.
+   On the home page (.site-header--over) the header is see-through, lies
+   over the painting, which runs up behind it (.hero-under-header), and is
+   as tall as it. The bar inside it is sticky, and as tall as the hanging
+   logotype: it stays at the top of the window until the painting's foot
+   reaches the logotype's, then leaves with the painting. The header lets
+   the pointer through to the painting, all but the logotype, the button
+   and the drawer. */
+.site-header {
+  --logo-w: 3.75rem;
+  position: relative;
+  z-index: 20;
+}
+
+.site-nav {
+  position: relative;
+  z-index: 1;                   /* above the menu's drawer, which follows it */
+  min-height: 3.5rem;           /* the bar; washes.js sizes its blots below it */
+  padding-right: .5rem;
+}
+
+.site-header--over {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(3.5rem + 220px);
+  pointer-events: none;
+}
+
+.site-header--over nav {
+  position: sticky;
+  top: 0;
+  align-items: flex-start;
+  height: calc(.5rem + var(--logo-w) * 288 / 233);
+  background: transparent;
+}
+
+/* The button where it sits in the 3.5rem bar elsewhere (44 px tall). */
+.site-header--over .site-menu { margin-top: calc((3.5rem - 44px) / 2); }
+
+.site-header--over .logotype-panel,
+.site-header--over .menu-button { pointer-events: auto; }
+
+/* The header's height, 3.5rem, and 220 px of painting below it. */
+.hero-under-header { height: calc(3.5rem + 220px); }
+
+.logotype-space { width: 4.75rem; }
+
+.logotype-panel {
+  position: absolute;
+  top: .5rem;
+  left: 1rem;
+  width: var(--logo-w);
+  aspect-ratio: 233 / 288;      /* the logotype's own */
+}
+
+/* The logotype is the heading's background, not an <img>, so image-zoom
+   browser extensions leave it alone; the name is in the heading as text,
+   hidden from sight (.clip). */
+.wordmark {
+  height: 100%;
+  margin: 0;
+  background: url(/img/logotype.webp) center / contain no-repeat;
+}
 
 @media (--breakpoint-not-small) {
-  .publication-sketch { height: 600px; }
-  .publication-aside {
-    position: sticky;
-    top: var(--spacing-medium);
+  .site-header { --logo-w: 4.5rem; }
+  .logotype-space { width: 5.5rem; }
+}
+
+/* The button: the icon alone, no background in any state, above the
+   drawer it opens. */
+.menu-button {
+  position: relative;
+  z-index: 1;
+  display: block;
+  padding: .5rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  opacity: .85;
+  transition: var(--hover-transition);
+}
+
+.menu-button:hover,
+.menu-button:focus-visible,
+.site-menu.is-open .menu-button { opacity: 1; }
+
+/* The icon is a background, not an <img>, so image-zoom browser
+   extensions leave it alone. */
+.menu-icon {
+  display: block;
+  width: 36px;
+  height: 28px;
+  background: url(/img/menu.webp) center / contain no-repeat;
+}
+
+/* While hovered or focused, the menu icon and the logotype breathe: they
+   swell very slightly and settle, slowly, so they read as things to
+   press. */
+.menu-button:hover .menu-icon,
+.menu-button:focus-visible .menu-icon,
+.logotype-panel:hover .wordmark,
+.logotype-panel:focus-visible .wordmark { animation: breathe 1.6s ease-in-out infinite; }
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+
+/* The drawer's frame: at the right of the header, from its top down as
+   far as the home page's painting reaches (3.5rem + 220px). On the home
+   page it is a parallax frame like the painting's: the drawer moves down
+   within it as the painting does, and the frame's foot clips it, so the
+   page slides over both. A strip on the left keeps the drawer's shadow
+   inside the clip. The frame itself lets the pointer through.
+   The drawer: a Prussian blue panel filling the frame,
+   see-through, its links below the button and right-aligned with it, in
+   sans at reduced strength,
+   as the nav's links were; full strength on hover and focus. It opens with a wipe
+   from the right (a clip, so the page never grows sideways), at once with
+   reduced motion. Hidden, it is out of the tab order. */
+.menu-list {
+  height: 100%;
+  box-sizing: border-box;
+  width: min-content;           /* the longest word, and the links' padding */
+  margin: 0;
+  padding: 3.5rem 0 1rem;
+  list-style: none;
+  background: rgba(20, 33, 61, .7);   /* --primary, see-through */
+  box-shadow: -4px 0 16px rgba(20, 33, 61, .2);
+  clip-path: inset(0 0 0 100%);
+  visibility: hidden;
+  transition: clip-path .3s ease, visibility 0s linear .3s;
+}
+
+.menu-drawer {
+  --drawer-h: calc(3.5rem + 220px);
+  --bar-h: calc(.5rem + var(--logo-w) * 288 / 233);   /* .site-header--over nav */
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: var(--drawer-h);
+  padding-left: 2rem;
+  pointer-events: none;
+}
+
+/* On the home page the drawer moves with the painting, but its links (and
+   the line above them) keep their place under the button: they move down
+   within the drawer by the rest of the scroll, (1 - rate) times it,
+   while the bar is stuck to the top of the window, and leave with the bar
+   once the painting's foot takes it. With scroll-driven animations they
+   follow the drawer's parallax timeline (below); elsewhere parallax.js
+   sets --parallax-y, the scroll the frame has had. */
+[data-parallax] .menu-drawer li {
+  translate: 0 calc(var(--parallax-y, 0px) * (1 - var(--parallax-rate)));
+  transform: translate3d(0, calc(-1 * clamp(0px, var(--parallax-y, 0px) - var(--drawer-h) + var(--bar-h), var(--bar-h))), 0);
+}
+
+@keyframes menu-keep {
+  from { translate: 0 0; }
+  to { translate: 0 calc((1 - var(--parallax-rate)) * var(--drawer-h)); }
+}
+
+@keyframes menu-leave {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, calc(-1 * var(--bar-h)), 0); }
+}
+
+.menu-drawer.is-open .menu-list {
+  pointer-events: auto;
+  clip-path: inset(0 0 0 -2rem);
+  visibility: visible;
+  transition: clip-path .3s ease, visibility 0s;
+}
+
+.menu-list li { border-top: 1px solid rgba(255, 255, 255, .15); }
+
+.menu-list a {
+  padding: 1rem 1.5rem;
+  text-align: right;            /* in line with the button above */
+  font-family: var(--font-header);
+  font-weight: var(--body-font-weight);
+  color: var(--alabaster-grey);
+  opacity: .65;
+}
+
+.menu-list a:hover,
+.menu-list a:focus-visible { opacity: 1; }
+
+/* No underline on hover, unlike the bar's links; keyboard focus keeps
+   its ring. */
+.site-nav .menu-list a:hover { box-shadow: none; }
+.site-nav .menu-list a:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+
+/* Publication cards: source and year as a small capitals label above
+   the title, then the authors in grey, with the site owner's name in ink. */
+.eyebrow {
+  font-family: var(--font-header);
+  font-size: .6875rem;
+  font-weight: var(--bold-font-weight);
+  letter-spacing: .08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.authors strong {
+  color: var(--primary);
+  font-weight: var(--bold-font-weight);
+}
+
+.fine { font-size: .75rem; }
+
+/* Parallax header: inside an element marked data-parallax, a sketch's
+   frame clips the painting. Once the top of the frame reaches the top of
+   the window, the painting moves down within the frame by
+   --parallax-rate times the scroll, so it leaves the screen more slowly
+   than the page. Starting only then keeps the strip that opens above the
+   painting off screen.
+   Where the browser supports scroll-driven animations, it moves the
+   painting itself, in step with the scroll; elsewhere
+   site/static/js/parallax.js sets --parallax on every frame. */
+[data-parallax] [data-p5-sketch],
+[data-parallax] [data-parallax-frame] { overflow: hidden; }
+[data-parallax] [data-p5-sketch] > *,
+[data-parallax] [data-parallax-frame] > * {
+  transform: translate3d(0, var(--parallax, 0px), 0);
+  will-change: transform;
+}
+
+@keyframes parallax {
+  to { transform: translate3d(0, calc(var(--parallax-rate, 0.25) * 100%), 0); }
+}
+
+@supports (animation-timeline: view()) {
+  [data-parallax] [data-p5-sketch],
+  [data-parallax] [data-parallax-frame] { view-timeline: --parallax block; }
+  [data-parallax] [data-p5-sketch] > *,
+  [data-parallax] [data-parallax-frame] > * {
+    animation: parallax linear both;
+    animation-timeline: --parallax;
+    animation-range: exit 0% exit 100%;
+  }
+  [data-parallax] .menu-drawer li {
+    animation: menu-keep linear both, menu-leave linear both;
+    animation-timeline: --parallax, --parallax;
+    animation-range: exit 0% exit 100%, exit calc(var(--drawer-h) - var(--bar-h)) exit 100%;
+  }
+}
+
+/* The nav's Publications link scrolls down the landing page. */
+html { scroll-behavior: smooth; }
+
+/* Motion policy (see site/static/js/p5-mount.js): with reduced motion
+   nothing animates; hover states change at once. */
+@media (prefers-reduced-motion: reduce) {
+  .menu-list,
+  .menu-drawer.is-open .menu-list { transition: none; }
+  .menu-button:hover .menu-icon,
+  .menu-button:focus-visible .menu-icon,
+  .logotype-panel:hover .wordmark,
+  .logotype-panel:focus-visible .wordmark { animation: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
   }
 }

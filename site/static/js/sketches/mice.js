@@ -1,21 +1,36 @@
 // Two abstract mice on white, in the manner of an ink painting, dark grey
 // silhouettes with a fan of whiskers: one calls, the other
-// listens. Hovering over a mouse (or tapping it) makes it vocalise: bouts
-// of ultrasonic vocalisation syllables, as spectrogram contours (time
-// along x, frequency up), leave its snout and travel along a curve to the
-// other mouse's ear, fading as they arrive. Each syllable is written out
-// left to right as it leaves.
+// listens. Hovering over a mouse (or tapping it) makes it call: a steady
+// stream of ultrasonic vocalisation syllables, as spectrogram contours
+// (time along x, frequency up), leaves its snout and travels along a
+// smooth, winding path to the other mouse's ear. The stream matches the
+// one on the publication cards (usv-card.js): the syllables grow and fan
+// out a little as they go, slow towards the end and fade out as they
+// near the other mouse, gone before they reach it. Each syllable flicks
+// the caller's ears as it leaves, and they settle back with a slow, soft
+// twitch: each ear is turned about its base by a small warp of the
+// painted mouse that fades out towards the head, so it shows no seam.
+// At rest the mice sit still with no syllables; a stream runs only while
+// its mouse calls. With reduced motion the sketch is a still frame of the
+// caller's stream in full flow and never moves. A call has inertia,
+// as on the cards: it gathers speed when a mouse starts calling, and when
+// the call ends it runs down to a stop, all of it slowing together, as a
+// tape does, and fades out as it goes.
 //
 // In a tall frame the mice are stacked, facing opposite ways and a little
 // askew; in a wide frame they face each other across the middle.
 //
 // The syllables follow the usual classification of mouse USVs (flat, down,
 // up, U-shaped, inverted U, complex, complex 2 to 5, harmonic and
-// unclassified), weighted towards the complex types, and are stretched a
-// little in time and frequency so that repeats differ.
+// unclassified), weighted towards the complex types.
 //
 // The mice and syllables come from /img/mice.webp (white, alpha = pigment
 // density), painted ahead of time with p5.brush by tools/mouse-atlas.html.
+//
+// A variant (data-p5-variant on the frame) puts another caller in the
+// first mouse's place: "computer" is a cartoon computer with mouse ears,
+// from /img/computer.webp (tools/computer-atlas.html), for synthetic
+// vocalisations.
 (function () {
   "use strict";
 
@@ -29,40 +44,80 @@
   var SYLLABLES = 12;
   // Relative frequency of each syllable type, in atlas order.
   var SYLLABLE_WEIGHTS = [1, 1, 1, 1, 1, 2, 2, 2, 1.5, 1.5, 1.5, 0.5];
-  var STRETCH_T = [0.85, 1.2];    // range of time stretch of a syllable
-  var STRETCH_F = [0.9, 1.1];     // range of frequency stretch
 
   var BG = "#ffffff";
   // Colour, opacity and number of passes of each layer of a mouse, all
   // dark grey: the silhouette (laid twice, as its pigment is thin), darker
   // pools, whiskers and dust, and lighter blooms.
   var LAYER_TINTS = [["#2f2f31", 1, 2], ["#151517", 0.5, 1], ["#202022", 0.9, 1], ["#6a6a6c", 0.3, 1]];
-  // Inks of the syllables, with their weights: Prussian blue, and a tint of
-  // it towards alabaster.
-  var USV_INKS = [["#14213d", 3], ["#4d5874", 2]];
-  var USV_ALPHA = 0.8;
+  // Inks of the syllables, with their weights: the theme orange, and a
+  // deeper shade of it.
+  var USV_INKS = [["#fca311", 3], ["#d98a06", 2]];
 
   var TALL = 1.4;                 // height / width above which the mice are stacked
   var TAP_HOLD = 2.5;             // s a tapped mouse keeps calling
-  var BOUT = [3, 6];              // syllables in a bout
-  var BOUT_GAP = [0.6, 1.0];      // s of silence between bouts
-  var SYL_INTERVAL = [0.28, 0.42]; // s between syllable onsets in a bout
-  var SYL_SIZE = 0.3;             // syllable size, as a fraction of mouse width
-  var TRAVEL = 3.4;               // s for a syllable to reach the other mouse
-  var LEAD = 0.12;                // how far a path runs straight out of the snout and into the ear, as a fraction of the distance between them
-  var KNOT_GAP = 110;             // px between knots along the path
-  var SPREAD = 0.35;              // sideways scatter off the path, in syllable sizes
-  var LIFE = 2.2;                 // s a syllable lasts when it does not move (reduced motion)
-  var WRITE = 0.12;               // s to write a syllable out, left to right
+  // The stream; keep in sync with usv-card.js. The path is a sine wave
+  // along the line from the snout to the ear, whose amplitude shrinks
+  // until its heading swings by at most MAX_TURN, so it never knots, and
+  // until it stays inside the frame. It leaves the snout and enters the
+  // ear along that line.
+  var INTERVAL = [0.35, 0.6];     // s between syllables
+  var SPEED = 87;                 // px/s along the path, on average
+  var END_SPEED = 0.4;            // speed at the ear, as a fraction of the speed at the snout
+  var SIZE = [0.2, 0.72];         // syllable size at the snout and at the ear, in mouse widths
+  var FAN = 0.1;                  // sideways spread at the ear, in mouse widths
+  var ALPHA = 0.95;
+  var GONE = 0.8;                 // fraction of the path by which a syllable has faded out, before the ear
+  var FADE_OUT = 0.7;             // s for a stream to fade out once its mouse stops calling
+  var MAX_TURN = 60;              // degrees
+  var HALF_WAVE = 150;            // px along the line per bend, roughly
+  // How fast a call gathers speed and runs down: the natural frequency
+  // (1/s) of a critically damped spring on its speed.
+  var SPIN_UP = 12;
+  var RUN_DOWN = 7;
 
   // Where a syllable leaves and arrives, in tile fractions (the mouse
   // faces left in its tile): just in front of the snout, and the near ear.
-  var SNOUT = { u: 0.08, v: 0.68 };
-  var EAR = { u: 0.3, v: 0.3 };
+  // One for each mouse.
+  var SNOUT = [{ u: 0.08, v: 0.68 }, { u: 0.08, v: 0.68 }];
+  var EAR = [{ u: 0.3, v: 0.3 }, { u: 0.3, v: 0.3 }];
+
+  // The ears of each mouse, in tile px (400 x 280, facing left): the
+  // ellipse that holds each ear and the pivot at its base. The warp turns
+  // an ear fully inside its ellipse and fades to nothing at EAR_FADE times
+  // its radii. The listener's ears are pricked, so they sit differently.
+  var EARS = [
+    [{ c: [66, 86], r: [26, 36], pivot: [90, 122] },    // caller: near ear
+     { c: [120, 70], r: [27, 45], pivot: [128, 120] }], //         far ear
+    [{ c: [64, 86], r: [30, 34], pivot: [92, 120] },    // listener: near ear
+     { c: [120, 62], r: [30, 46], pivot: [130, 115] }]  //           far ear
+  ];
+  var EAR_FADE = 1.6;
+  // Each ear is a damped spring in its angle. Keep in sync with
+  // usv-card.js.
+  var EAR_HZ = 1.8;
+  var EAR_DAMPING = 0.35;
+  var EAR_KICK = 0.07;            // rad, about the largest turn of one flick
+  var EAR_LAG = 0.08;             // s the far ear follows the near one
 
   // The mouse in its tile, for hit testing: an ellipse round body and ears,
-  // in tile fractions (the mouse faces left in the tile).
-  var HIT = { x: 0.53, y: 0.52, rx: 0.47, ry: 0.46 };
+  // in tile fractions (the mouse faces left in the tile). One for each mouse.
+  var HIT = [{ x: 0.53, y: 0.52, rx: 0.47, ry: 0.46 }, { x: 0.53, y: 0.52, rx: 0.47, ry: 0.46 }];
+
+  // Callers that take the first mouse's place, each from an atlas in the
+  // layout of one mouse row of mice.webp, with its own mouth, ears and
+  // outline. Keep in sync with tools/computer-atlas.html.
+  var VARIANTS = {
+    computer: {
+      src: "/img/computer.webp",
+      snout: { u: 0.196, v: 0.495 },    // the mouth on the screen
+      inks: [["#14213d", 3], ["#2b4170", 2]], // Prussian blue, and a lighter shade
+      ear: { u: 0.3, v: 0.2 },
+      ears: [{ c: [92, 47], r: [22, 26], pivot: [97, 69] },
+             { c: [149, 46], r: [26, 29], pivot: [151, 71] }],
+      hit: { x: 0.5, y: 0.46, rx: 0.43, ry: 0.42 }
+    }
+  };
 
   function canvas(w, h) {
     var c = document.createElement("canvas");
@@ -104,32 +159,109 @@
     return c;
   }
 
-  function loadAtlas() {
+  function loadImage(src) {
     return new Promise(function (resolve) {
       var img = new Image();
       img.onload = function () { resolve(img); };
       img.onerror = function () {
-        console.warn("could not load " + ATLAS_SRC + "; using plain shapes");
-        resolve(fallbackAtlas());
+        console.warn("could not load " + src);
+        resolve(null);
       };
-      img.src = ATLAS_SRC;
+      img.src = src;
     });
+  }
+
+  // The atlas, with the variant's caller laid over the first mouse row.
+  // Without the variant's image the mouse stays; without the atlas the
+  // plain shapes take its place.
+  function loadAtlas(variant) {
+    return Promise.all([loadImage(ATLAS_SRC), variant ? loadImage(variant.src) : null]).then(function (imgs) {
+      var base = imgs[0] || fallbackAtlas();
+      if (!imgs[1]) return base;
+      var c = canvas(base.width, base.height);
+      var ctx = c.getContext("2d");
+      ctx.drawImage(base, 0, 0);
+      ctx.clearRect(0, 0, LAYERS * MOUSE_W, MOUSE_H);
+      ctx.drawImage(imgs[1], 0, 0, LAYERS * MOUSE_W, MOUSE_H, 0, 0, LAYERS * MOUSE_W, MOUSE_H);
+      return c;
+    });
+  }
+
+  // Mouse with its ears turned: a copy of `src` (ImageData of one mouse)
+  // warped into `out`. Each pixel samples the source where the ears'
+  // turns would have carried it from. Same as earWarp in usv-card.js.
+  function earWarp(src, out, ears, angles) {
+    var W = src.width, H = src.height, a = src.data, b = out.data;
+    b.set(a);
+    var x0 = W, y0 = H, x1 = 0, y1 = 0;
+    ears.forEach(function (e) {
+      x0 = Math.min(x0, Math.floor(e.c[0] - e.r[0] * EAR_FADE));
+      x1 = Math.max(x1, Math.ceil(e.c[0] + e.r[0] * EAR_FADE));
+      y0 = Math.min(y0, Math.floor(e.c[1] - e.r[1] * EAR_FADE));
+      y1 = Math.max(y1, Math.ceil(e.c[1] + e.r[1] * EAR_FADE));
+    });
+    x0 = Math.max(0, x0); y0 = Math.max(0, y0);
+    x1 = Math.min(W - 1, x1); y1 = Math.min(H - 1, y1);
+    for (var y = y0; y <= y1; y++) {
+      for (var x = x0; x <= x1; x++) {
+        var sx = x, sy = y;
+        for (var k = 0; k < ears.length; k++) {
+          var e = ears[k];
+          var dx = (x - e.c[0]) / e.r[0], dy = (y - e.c[1]) / e.r[1];
+          var t = Math.min(1, Math.max(0, (EAR_FADE - Math.sqrt(dx * dx + dy * dy)) / (EAR_FADE - 1)));
+          var th = -angles[k] * t * t * (3 - 2 * t);
+          if (!th) continue;
+          var px = x - e.pivot[0], py = y - e.pivot[1];
+          var cos = Math.cos(th), sin = Math.sin(th);
+          sx += px * cos - py * sin - px;
+          sy += px * sin + py * cos - py;
+        }
+        if (sx === x && sy === y) continue;
+        // Bilinear sample, transparent outside the image.
+        var fx = Math.floor(sx), fy = Math.floor(sy), u = sx - fx, v = sy - fy;
+        var q = 4 * (y * W + x);
+        for (var ch = 0; ch < 4; ch++) {
+          var acc = 0;
+          for (var j = 0; j < 2; j++) {
+            for (var i = 0; i < 2; i++) {
+              var X = fx + i, Y = fy + j;
+              if (X < 0 || Y < 0 || X >= W || Y >= H) continue;
+              acc += a[4 * (Y * W + X) + ch] * (i ? u : 1 - u) * (j ? v : 1 - v);
+            }
+          }
+          b[q + ch] = acc;
+        }
+      }
+    }
   }
 
   window.p5Sketches = window.p5Sketches || {};
 
   window.p5Sketches.mice = function (p, opts) {
     var el = opts.el;
-    var mice = [];                // {x, y, w, rot, flip, tile, holdUntil, nextBout}
-    var syllables = [];           // {path, size, sx, sy, off, travel, still, tile, ink, born}
+    var variant = VARIANTS[el.getAttribute("data-p5-variant")] || null;
+    // Each mouse's mouth, ear, ears and outline, the caller's from the
+    // variant if there is one.
+    var inks = variant && variant.inks || USV_INKS;
+    var snouts = SNOUT.slice(), earAt = EAR.slice(), earSets = EARS.slice(), hits = HIT.slice();
+    if (variant) {
+      snouts[0] = variant.snout;
+      earAt[0] = variant.ear;
+      earSets[0] = variant.ears;
+      hits[0] = variant.hit;
+    }
+    var mice = [];                // {x, y, w, rot, flip, tile, holdUntil, next, rate, rateV}
+    // Each mouse painted whole, and with its ears where they are now:
+    // {src (ImageData), out (ImageData), canvas, ears: [{a, v}], lagged, still}
+    var painted = [];
+    var syllables = [];           // {from, route, q (fraction of the travel time), size, side, tile, ink}
+    var routes = [];              // per caller: {path, travel}
     var t = 0;
     var pointer = null;           // {x, y} while the pointer is over the frame
     var hovered = -1;
     var atlas = null;
     var inkAtlases = [];
     var restLayer = null;
-    var bow = 0;                  // px, how far the paths arch upwards
-    var swing = 0;                // px, sideways swing of a path at each knot
 
     // Places the mice for the frame's shape.
     function layout() {
@@ -141,25 +273,28 @@
           { x: w / 2, y: h * 0.13, w: mw, rot: -0.07, flip: 1 },
           { x: w / 2, y: h * 0.87, w: mw, rot: -0.1, flip: -1 }
         ];
-        bow = 0;
-        swing = 0.3 * w;
       } else {
         var mw2 = Math.min(w * 0.4, h * 1.1);
         mice = [
           { x: w * 0.72, y: h * 0.48, w: mw2, rot: 0.08, flip: 1 },
           { x: w * 0.28, y: h * 0.55, w: mw2, rot: -0.1, flip: -1 }
         ];
-        // Face to face, the mice are too close for the path to wind, so it
-        // arches over the gap between them.
-        bow = -0.35 * h;
-        swing = 0;
       }
       mice.forEach(function (m, i) {
         m.tile = i;
         m.holdUntil = -1;
-        m.nextBout = 0;
+        m.next = 0;
+        m.rate = 0;
+        m.rateV = 0;
+      });
+      routes = mice.map(function (m, i) {
+        var c = path(i, 1 - i);
+        return { path: c, travel: Math.max(1, c.cum[c.cum.length - 1] / SPEED) };
       });
       syllables = [];
+      // With reduced motion the sketch rests on the caller's stream in full
+      // flow; otherwise it starts empty, and a stream appears with a call.
+      if (opts.reducedMotion) prime(0);
     }
 
     // Tile fractions of mouse m -> frame coordinates.
@@ -175,64 +310,63 @@
       return { x: -m.flip * Math.cos(m.rot), y: -m.flip * Math.sin(m.rot) };
     }
 
-    // A path from the snout of mouse a to the ear of mouse b: a
-    // Catmull-Rom spline through knots that swing from side to side
-    // across the line between the mice, so the path winds. It leaves the
-    // snout in the direction a faces and comes into the ear from in front
-    // of b's head; every knot stays inside the frame. The swing varies a
-    // little from bout to bout. Returned as a polyline with its cumulative
-    // length, so syllables can move along it at an even pace.
+    // The path from the snout of mouse a to the ear of mouse b, as on the
+    // cards: a sine wave along the line between them that fades in at the
+    // snout and out at the ear. Its first bend goes up where the line runs
+    // across the frame, and the way the caller faces where it runs down.
+    // Returned as a polyline with its cumulative length, so syllables move
+    // along it at an even pace.
     function path(a, b) {
-      var ma = mice[a], mb = mice[b];
-      var p0 = fromTile(ma, SNOUT.u, SNOUT.v);
-      var p1 = fromTile(mb, EAR.u, EAR.v);
-      var fa = facing(ma), fb = facing(mb);
-      var len = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
-      var margin = ma.w * SYL_SIZE * 0.6;
-      function inside(q) {
-        return {
-          x: Math.min(p.width - margin, Math.max(margin, q.x)),
-          y: Math.min(p.height - margin, Math.max(margin, q.y))
-        };
+      var ma = mice[a];
+      var p0 = fromTile(ma, snouts[ma.tile].u, snouts[ma.tile].v);
+      var p1 = fromTile(mice[b], earAt[mice[b].tile].u, earAt[mice[b].tile].v);
+      var ex = p1.x - p0.x, ey = p1.y - p0.y;
+      var len = Math.hypot(ex, ey) || 1;
+      var ax = ex / len, ay = ey / len;
+      var nx = -ay, ny = ax;
+      var f = facing(ma);
+      if (Math.abs(ny) > 0.5 ? ny > 0 : nx * f.x < 0) { nx = -nx; ny = -ny; }
+      // Keep the largest syllables inside the frame, as far as it allows.
+      var margin = Math.min(SIZE[1] * ma.w / 2 + FAN * ma.w, 0.2 * Math.min(p.width, p.height));
+      function outside(x, y) {
+        return Math.max(0, margin - x, x - (p.width - margin), margin - y, y - (p.height - margin));
       }
-      var out = inside({ x: p0.x + fa.x * len * LEAD, y: p0.y + fa.y * len * LEAD });
-      var into = inside({ x: p1.x + fb.x * len * LEAD, y: p1.y + fb.y * len * LEAD });
-      // Unit normal to the line between the lead points; the first swing
-      // goes against the way the path leaves the snout.
-      var dx = into.x - out.x, dy = into.y - out.y, d = Math.hypot(dx, dy) || 1;
-      var nx = -dy / d, ny = dx / d;
-      var side = (fa.x * nx + fa.y * ny) > 0 ? -1 : 1;
-      var amp = swing * p.random(0.8, 1.2);
-      var knots = [p0, out];
-      var n = Math.max(2, Math.round(d / KNOT_GAP));
-      for (var k = 1; k <= n; k++) {
-        var f = k / (n + 1);
-        knots.push(inside({
-          x: out.x + dx * f + nx * side * amp * p.random(0.7, 1.1),
-          y: out.y + dy * f + ny * side * amp * p.random(0.7, 1.1) + bow * Math.sin(Math.PI * f)
-        }));
-        side = -side;
-      }
-      knots.push(into, p1);
-      return polyline(knots);
-    }
-
-    // Samples a Catmull-Rom spline through the knots.
-    function polyline(knots) {
-      var pts = [knots[0]];
-      for (var i = 0; i < knots.length - 1; i++) {
-        var k0 = knots[Math.max(0, i - 1)], k1 = knots[i], k2 = knots[i + 1], k3 = knots[Math.min(knots.length - 1, i + 2)];
-        for (var j = 1; j <= 16; j++) {
-          var t = j / 16, t2 = t * t, t3 = t2 * t;
-          pts.push({
-            x: 0.5 * (2 * k1.x + (-k0.x + k2.x) * t + (2 * k0.x - 5 * k1.x + 4 * k2.x - k3.x) * t2 + (-k0.x + 3 * k1.x - 3 * k2.x + k3.x) * t3),
-            y: 0.5 * (2 * k1.y + (-k0.y + k2.y) * t + (2 * k0.y - 5 * k1.y + 4 * k2.y - k3.y) * t2 + (-k0.y + 3 * k1.y - 3 * k2.y + k3.y) * t3)
-          });
+      var bends = Math.max(1, Math.round(len / HALF_WAVE));
+      // Start from the amplitude at which a plain sine wave swings by MAX_TURN.
+      var amp = len * Math.tan(MAX_TURN / 2 * Math.PI / 180) / (Math.PI * bends);
+      var pts;
+      for (var tries = 0; tries < 30; tries++, amp *= 0.9) {
+        pts = [];
+        var ok = true, lo = Infinity, hi = -Infinity;
+        for (var i = 0; i <= 128; i++) {
+          var t = i / 128, ramp = Math.min(1, t / 0.2, (1 - t) / 0.2);
+          var o = amp * ramp * ramp * Math.sin(Math.PI * bends * t);
+          var bx = p0.x + ex * t, by = p0.y + ey * t;
+          var x = bx + nx * o, y = by + ny * o;
+          // The wave may not carry the path out of the frame; the line
+          // itself may run near its edge, at the mice.
+          if (outside(x, y) > outside(bx, by) + 0.5) ok = false;
+          if (i) {
+            var dx = x - pts[i - 1].x, dy = y - pts[i - 1].y;
+            var hd = Math.atan2(dx * ny - dy * nx, dx * ax + dy * ay) * 180 / Math.PI;
+            lo = Math.min(lo, hd);
+            hi = Math.max(hi, hd);
+          }
+          pts.push({ x: x, y: y });
         }
+        if (ok && hi - lo <= MAX_TURN) break;
       }
       var cum = [0];
       for (i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
       return { pts: pts, cum: cum };
+    }
+
+    // Fraction of the path reached at fraction u of the travel time: the
+    // speed falls linearly to END_SPEED of its speed at the snout, with
+    // the whole travel taking the same time. As in usv-card.js.
+    function eased(u) {
+      var a = 2 / (1 + END_SPEED);
+      return a * u - a * (1 - END_SPEED) * u * u / 2;
     }
 
     // Point and unit normal at fraction q of a path's length.
@@ -261,7 +395,8 @@
     function hitTest(x, y) {
       for (var i = 0; i < mice.length; i++) {
         var q = toTile(mice[i], x, y);
-        var du = (q.u - HIT.x) / HIT.rx, dv = (q.v - HIT.y) / HIT.ry;
+        var hit = hits[mice[i].tile];
+        var du = (q.u - hit.x) / hit.rx, dv = (q.v - hit.y) / hit.ry;
         if (du * du + dv * dv <= 1) return i;
       }
       return -1;
@@ -278,8 +413,37 @@
       ctx.restore();
     }
 
-    // The background and the mice, each layer tinted through one scratch
-    // tile.
+    // Each mouse, its layers tinted through one scratch tile and laid
+    // into a canvas of its own, which the ear warp then works on.
+    function paintMice() {
+      var scratch = canvas(MOUSE_W, MOUSE_H);
+      var sctx = scratch.getContext("2d");
+      painted = [];
+      for (var i = 0; i < MICE; i++) {
+        var c = canvas(MOUSE_W, MOUSE_H);
+        var ctx = c.getContext("2d");
+        for (var l = 0; l < LAYERS; l++) {
+          var tile = mouseTile(i, l);
+          sctx.globalCompositeOperation = "copy";
+          sctx.drawImage(atlas, tile.x, tile.y, tile.w, tile.h, 0, 0, tile.w, tile.h);
+          sctx.globalCompositeOperation = "source-in";
+          sctx.fillStyle = LAYER_TINTS[l][0];
+          sctx.fillRect(0, 0, tile.w, tile.h);
+          ctx.globalAlpha = LAYER_TINTS[l][1];
+          for (var pass = 0; pass < LAYER_TINTS[l][2]; pass++) ctx.drawImage(scratch, 0, 0);
+        }
+        painted.push({
+          src: ctx.getImageData(0, 0, MOUSE_W, MOUSE_H),
+          out: ctx.createImageData(MOUSE_W, MOUSE_H),
+          canvas: c,
+          ears: earSets[i].map(function () { return { a: 0, v: 0 }; }),
+          lagged: [],
+          still: true
+        });
+      }
+    }
+
+    // The background.
     function drawRestLayer() {
       if (!restLayer) {
         restLayer = p.createGraphics(p.width, p.height);
@@ -288,22 +452,56 @@
         restLayer.resizeCanvas(p.width, p.height);
       }
       var ctx = restLayer.drawingContext;
-      var scratch = canvas(MOUSE_W, MOUSE_H);
-      var sctx = scratch.getContext("2d");
       ctx.fillStyle = BG;
       ctx.fillRect(0, 0, p.width, p.height);
-      mice.forEach(function (m) {
-        for (var l = 0; l < LAYERS; l++) {
-          var tile = mouseTile(m.tile, l);
-          sctx.globalCompositeOperation = "copy";
-          sctx.drawImage(atlas, tile.x, tile.y, tile.w, tile.h, 0, 0, tile.w, tile.h);
-          sctx.globalCompositeOperation = "source-in";
-          sctx.fillStyle = LAYER_TINTS[l][0];
-          sctx.fillRect(0, 0, tile.w, tile.h);
-          for (var pass = 0; pass < LAYER_TINTS[l][2]; pass++) {
-            drawMouse(ctx, scratch, m, { x: 0, y: 0, w: tile.w, h: tile.h }, LAYER_TINTS[l][1]);
-          }
+    }
+
+    // Flicks the ears of mouse i back, by a varying amount; the far ear
+    // follows a moment later.
+    function flick(i) {
+      var e = painted[i];
+      if (!e) return;
+      var kick = EAR_KICK * p.random(0.6, 1) * 2 * Math.PI * EAR_HZ;
+      e.ears[0].v += kick;
+      e.lagged.push({ t: EAR_LAG, kick: kick * 0.8 });
+    }
+
+    // Steps the ears' springs, in small steps for stability.
+    function moveEars(dt) {
+      var w0 = 2 * Math.PI * EAR_HZ;
+      painted.forEach(function (e) {
+        e.lagged.forEach(function (l) {
+          l.t -= dt;
+          if (l.t <= 0) e.ears[1].v += l.kick;
+        });
+        e.lagged = e.lagged.filter(function (l) { return l.t > 0; });
+        var steps = Math.ceil(dt / 0.004);
+        for (var n = 0; n < steps; n++) {
+          var step = dt / steps;
+          e.ears.forEach(function (ear) {
+            ear.v += (-w0 * w0 * ear.a - 2 * EAR_DAMPING * w0 * ear.v) * step;
+            ear.a += ear.v * step;
+          });
         }
+      });
+    }
+
+    function earsStill(e) {
+      return !e.lagged.length && e.ears.every(function (ear) { return Math.abs(ear.a) < 1e-4 && Math.abs(ear.v) < 1e-3; });
+    }
+
+    // The mice, with their ears where they are now. The warp runs only
+    // while an ear moves, and once more as it comes to rest.
+    function drawMice(ctx) {
+      mice.forEach(function (m, i) {
+        var e = painted[m.tile];
+        var still = earsStill(e);
+        if (!(still && e.still)) {
+          earWarp(e.src, e.out, earSets[m.tile], e.ears.map(function (ear) { return ear.a; }));
+          e.canvas.getContext("2d").putImageData(e.out, 0, 0);
+        }
+        e.still = still;
+        drawMouse(ctx, e.canvas, m, { x: 0, y: 0, w: MOUSE_W, h: MOUSE_H }, 1);
       });
     }
 
@@ -328,29 +526,27 @@
       return 0;
     }
 
-    // A bout from mouse i: a few syllables, one after another, along its
-    // path to the other mouse. Returns the time the bout ends.
-    function bout(i) {
-      var m = mice[i];
-      var size = m.w * SYL_SIZE;
-      var n = Math.floor(p.random(BOUT[0], BOUT[1] + 1));
-      var route = path(i, 1 - i);
-      var onset = t;
-      for (var k = 0; k < n; k++) {
+    // A syllable from mouse i, at its snout; it flicks the mouse's ears.
+    function spawn(i) {
+      syllables.push({
+        from: i, route: routes[i], q: 0, size: mice[i].w, side: p.random(-1, 1),
+        tile: weighted(SYLLABLE_WEIGHTS),
+        ink: weighted(inks.map(function (c) { return c[1]; }))
+      });
+      flick(mice[i].tile);
+    }
+
+    // The caller's stream in full flow, along the whole path: the still
+    // frame the sketch shows with reduced motion.
+    function prime(i) {
+      var gap = (INTERVAL[0] + INTERVAL[1]) / 2;
+      for (var age = gap; age < routes[i].travel; age += gap) {
         syllables.push({
-          path: route, size: size,
-          sx: p.random(STRETCH_T[0], STRETCH_T[1]), sy: p.random(STRETCH_F[0], STRETCH_F[1]),
-          off: p.random(-SPREAD, SPREAD) * size,
-          travel: TRAVEL * p.random(0.9, 1.1),
-          // Where a still syllable sits on the path, with reduced motion.
-          still: (k + 1) / (n + 1),
+          from: i, route: routes[i], q: age / routes[i].travel, size: mice[i].w, side: p.random(-1, 1),
           tile: weighted(SYLLABLE_WEIGHTS),
-          ink: weighted(USV_INKS.map(function (c) { return c[1]; })),
-          born: onset
+          ink: weighted(inks.map(function (c) { return c[1]; }))
         });
-        onset += p.random(SYL_INTERVAL[0], SYL_INTERVAL[1]);
       }
-      return onset;
     }
 
     function calling(i) {
@@ -360,17 +556,48 @@
     function step(dt) {
       t += dt;
       for (var i = 0; i < mice.length; i++) {
-        if (calling(i) && t >= mice[i].nextBout) {
-          mice[i].nextBout = bout(i) + p.random(BOUT_GAP[0], BOUT_GAP[1]);
+        var m = mice[i];
+        spin(m, calling(i) ? 1 : 0, dt);
+        // The whole stream runs at its mouse's speed: syllables and the
+        // time between them.
+        m.next -= dt * m.rate;
+        if (m.rate > 0 && m.next <= 0) {
+          spawn(i);
+          m.next = p.random(INTERVAL[0], INTERVAL[1]);
         }
       }
+      moveEars(dt);
+      // A stream whose mouse no longer calls fades out as it runs down.
+      syllables.forEach(function (s) {
+        s.q += dt * mice[s.from].rate / s.route.travel;
+        if (s.fading === undefined && !calling(s.from)) s.fading = t;
+      });
       syllables = syllables.filter(function (s) {
-        return t - s.born < (opts.reducedMotion ? LIFE : s.travel);
+        return s.q < 1 && !(s.fading !== undefined && t - s.fading >= FADE_OUT);
       });
     }
 
+    // Moves mouse m's speed towards target along a critically damped
+    // spring, with its exact solution: no overshoot, no jolt when the
+    // target changes midway. As in usv-card.js.
+    function spin(m, target, dt) {
+      var w0 = target > m.rate ? SPIN_UP : RUN_DOWN;
+      var c1 = m.rate - target, c2 = m.rateV + w0 * c1;
+      var decay = Math.exp(-w0 * dt);
+      m.rate = target + (c1 + c2 * dt) * decay;
+      m.rateV = (c2 - w0 * (c1 + c2 * dt)) * decay;
+      if (Math.abs(m.rate - target) < 1e-3 && Math.abs(m.rateV) < 1e-2) {
+        m.rate = target;
+        m.rateV = 0;
+      }
+      m.rate = Math.max(0, Math.min(1, m.rate));
+    }
+
+    // Nothing moves: no mouse calls or runs down, and the ears are still.
     function idle() {
-      return syllables.length === 0 && mice.every(function (m, i) { return !calling(i); });
+      return mice.every(function (m, i) { return !calling(i) && !m.rate; }) &&
+        painted.every(earsStill) &&
+        syllables.every(function (s) { return s.fading === undefined; });
     }
 
     function updateHover() {
@@ -394,27 +621,32 @@
       p.canvas.style.visibility = "hidden";
       p.canvas.setAttribute("aria-hidden", "true");
       el.style.backgroundColor = BG;
-      el.addEventListener("pointermove", function (e) {
-        if (e.pointerType !== "mouse") return;
-        pointer = local(e);
-        updateHover();
-      });
-      el.addEventListener("pointerleave", function () {
-        pointer = null;
-        updateHover();
-      });
-      // Taps (and clicks) set the mouse calling for a while.
-      el.addEventListener("pointerdown", function (e) {
-        var q = local(e);
-        var i = hitTest(q.x, q.y);
-        if (i < 0) return;
-        mice[i].holdUntil = t + TAP_HOLD;
-        p.loop();
-      });
+      // With reduced motion the sketch is a still frame and ignores the
+      // pointer.
+      if (!opts.reducedMotion) {
+        el.addEventListener("pointermove", function (e) {
+          if (e.pointerType !== "mouse") return;
+          pointer = local(e);
+          updateHover();
+        });
+        el.addEventListener("pointerleave", function () {
+          pointer = null;
+          updateHover();
+        });
+        // Taps (and clicks) set the mouse calling for a while.
+        el.addEventListener("pointerdown", function (e) {
+          var q = local(e);
+          var i = hitTest(q.x, q.y);
+          if (i < 0) return;
+          mice[i].holdUntil = t + TAP_HOLD;
+          p.loop();
+        });
+      }
       layout();
-      loadAtlas().then(function (img) {
+      loadAtlas(variant).then(function (img) {
         atlas = img;
-        inkAtlases = USV_INKS.map(function (c) { return inkSyllables(img, c[0]); });
+        inkAtlases = inks.map(function (c) { return inkSyllables(img, c[0]); });
+        paintMice();
         drawRestLayer();
         p.canvas.style.visibility = "visible";
         p.redraw();
@@ -428,31 +660,19 @@
 
       var ctx = p.drawingContext;
       p.image(restLayer, 0, 0, p.width, p.height);
+      drawMice(ctx);
       syllables.forEach(function (s) {
-        var age = t - s.born;
-        if (age < 0) return;
-        var q, alpha, written;
-        if (opts.reducedMotion) {
-          q = s.still;
-          alpha = Math.min(1, age / 0.12) * Math.exp(-Math.max(0, age - 0.8) / 0.5);
-          written = 1;
-        } else {
-          // Eased along the path; fades in as it leaves and out as it arrives.
-          var f = age / s.travel;
-          q = f * f * (3 - 2 * f) * 0.85 + f * 0.15;
-          alpha = Math.min(1, f / 0.08) * Math.min(1, (1 - f) / 0.3);
-          written = Math.min(1, age / WRITE);
-        }
-        var at = along(s.path, q);
-        // A little smaller as it leaves, full size on arrival.
-        var grow = 0.8 + 0.2 * q;
-        var w = s.size * s.sx * grow;
-        var h = s.size * s.sy * grow;
-        var x = at.x + at.nx * s.off - w / 2;
-        var y = at.y + at.ny * s.off - h / 2;
+        var at = eased(s.q);
+        var pt = along(s.route.path, at);
+        var size = (SIZE[0] + (SIZE[1] - SIZE[0]) * at) * s.size;
+        var spread = s.side * FAN * s.size * at;
+        var x = pt.x + pt.nx * spread - size / 2;
+        var y = pt.y + pt.ny * spread - size / 2;
         ctx.save();
-        ctx.globalAlpha = USV_ALPHA * alpha;
-        ctx.drawImage(inkAtlases[s.ink], s.tile * SYL, 0, SYL * written, SYL, x, y, w * written, h);
+        var out = s.fading === undefined ? 1 : Math.max(0, 1 - (t - s.fading) / FADE_OUT);
+        ctx.globalAlpha = ALPHA * out * Math.min(1, at / 0.08) * Math.max(0, Math.min(1, (GONE - at) / 0.2));
+        // Twice, to deepen the thin washes, as on the cards.
+        for (var pass = 0; pass < 2; pass++) ctx.drawImage(inkAtlases[s.ink], s.tile * SYL, 0, SYL, SYL, x, y, size, size);
         ctx.restore();
       });
 

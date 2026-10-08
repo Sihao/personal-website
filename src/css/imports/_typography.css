@@ -20,14 +20,18 @@ body {
   background-color: var(--off-white);
  }
 
+ /* Headings: a light, high-contrast serif with tight tracking, never bold */
  h1,h2,h3,h4,h5 {
-  font-family: var(--font-header);
+  font-family: var(--font-display);
+  font-weight: var(--display-font-weight);
+  letter-spacing: -0.015em;
  }
 
 p {
   margin-bottom: var(--spacing-medium);
-  max-width: 32rem;
+  max-width: 40rem;
   font-family: var(--font-paragraph);
+  line-height: var(--line-height-text);
 }
 
 strong {

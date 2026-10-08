@@ -1,0 +1,220 @@
+<!doctype html>
+<!--
+  Paints the menu button's icon in the header (site/layouts/partials/
+  nav.html): three short strokes of watercolour in the theme orange, one
+  above another, laid with p5.brush.
+
+  Each stroke is a band round a gently wandering centre line, pressed
+  down at its start and thinning a little as it goes, its width swelling
+  and thinning with noise, laid in translucent glazes, each a little
+  narrower, that bleed and pool at their edges. Pigment is kept only near
+  the bands laid, as p5.brush throws stray spikes off long outlines (see
+  lessons.md).
+
+  As with the logotype (tools/logotype.html), the strokes are painted
+  large, PAINT times the saved size, and scaled down, so the brush's grain
+  and bleed come out as fine as the logotype's; the glazes are the
+  logotype's too.
+
+  Open this file in a browser with WebGL2 and save the result as
+  site/static/img/menu.webp. Painting is seeded, so the same SEED gives
+  the same icon.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Menu icon</title>
+  <style>
+    body { margin: 16px; font-family: sans-serif; background: #ffffff; color: #14213d; }
+    body > canvas, main > canvas { display: none; }
+    img { display: block; margin-bottom: 16px; background: #14213d; }
+    a { color: #14213d; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.min.js" integrity="sha384-Cs48F1uukMPysq29xNsf/FZL5ZNGsPfi6lDSGOxo6dypVFFiWO9Q3YbRKoXPPBii" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5.brush@2.2.3/dist/p5.brush.js" integrity="sha384-kwWM3zLjD/CdRap70WTKAsSsnuRP+m8UUSUCTvKE0YT9kCV50Lf9T33B819pu4hh" crossorigin="anonymous"></script>
+</head>
+<body>
+  <p id="status">Painting…</p>
+  <script>
+    // Top-level names must not clash with p5's globals (see lessons.md).
+    // The page shows the icon 36 x 28 CSS px: the saved icon is 3x that,
+    // painted at PAINT times the saved size. Sizes below are in saved px.
+    var SEED = 9;
+    var PAINT = 8;
+    var ICON_W = 108;
+    var ICON_H = 84;
+    var STROKE_Y = [16, 42, 68];  // px, the strokes' centre lines
+    var PAD = 8;                  // px of paper at the ends
+    var HALF = 7;                 // px, a stroke's half-width at its fullest
+    var STEP = 2;                 // px between points of a centre line
+    var GLAZES = 4;
+    var BAND_EDGE = 1.5;          // px past a band that its bleed may reach
+    var INK = [252, 163, 17];     // the theme orange
+
+    // Px of the icon -> WEBGL coordinates (origin at the canvas middle).
+    function at(x, y) { return [(x - ICON_W / 2) * PAINT, (y - ICON_H / 2) * PAINT]; }
+
+    // A stroke's centre line at height y0, wandering a little, with its
+    // half-width along it: pressed down at the start, round, then
+    // swelling and thinning with noise, and lifting a little at the end.
+    function centreLine(y0, seed) {
+      var pts = [], x0 = PAD + HALF, x1 = ICON_W - PAD - HALF;
+      for (var x = x0; x <= x1; x += STEP) {
+        var u = (x - x0) / (x1 - x0);
+        var y = y0 + 3 * (noise(seed + u * 1.2) - 0.5);
+        var body = 0.7 + 0.3 * noise(seed + 40 + u * 2.5);
+        var press = 1.15 - 0.3 * u;
+        var land = Math.min(1, Math.sqrt(u * 12 + 0.55));
+        var lift = Math.min(1, Math.sqrt((1 - u) * 10 + 0.4));
+        pts.push([x, y, HALF * body * press * land * lift]);
+      }
+      return pts;
+    }
+
+    // The outline of a band along points [x, y, half-width], with round ends.
+    function band(pts, scale) {
+      var left = [], right = [], dirs = [];
+      pts.forEach(function (q, i) {
+        var a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+        var nx = b[1] - a[1], ny = a[0] - b[0], len = Math.hypot(nx, ny) || 1;
+        var w = q[2] * scale * random(0.94, 1.06);
+        dirs.push(Math.atan2(ny, nx));
+        left.push([q[0] + nx / len * w, q[1] + ny / len * w]);
+        right.push([q[0] - nx / len * w, q[1] - ny / len * w]);
+      });
+      function cap(i, from) {
+        var out = [];
+        for (var k = 1; k < 6; k++) {
+          var t = from + Math.PI * k / 6;
+          out.push([pts[i][0] + Math.cos(t) * pts[i][2] * scale, pts[i][1] + Math.sin(t) * pts[i][2] * scale]);
+        }
+        return out;
+      }
+      var last = pts.length - 1;
+      return left.concat(cap(last, dirs[last]), right.reverse(), cap(0, dirs[0] + Math.PI));
+    }
+
+    var widest = [];              // the outline of each stroke's widest glaze, for the mask
+
+    function paintIcon() {
+      brush.noStroke();
+      STROKE_Y.forEach(function (y0, i) {
+        var pts = centreLine(y0, 100 * (i + 1));
+        for (var g = 0; g < GLAZES; g++) {
+          var shape = band(pts, 1 - 0.35 * g / Math.max(1, GLAZES - 1));
+          if (!g) widest.push(shape);
+          brush.fill(0, 0, 0, random(90, 130));
+          brush.fillBleed(random(0.08, 0.2), "out");
+          brush.fillTexture(random(0.3, 0.5), random(0.05, 0.15), true);
+          brush.polygon(shape.map(function (q) { return at(q[0], q[1]); }));
+        }
+      });
+      brush.noFill();
+    }
+
+    function setup() {
+      createCanvas(ICON_W * PAINT, ICON_H * PAINT, WEBGL);
+      pixelDensity(1);
+      randomSeed(SEED);
+      noiseSeed(SEED);
+      background(255);
+      brush.scaleBrushes(1);
+      brush.noField();
+      paintIcon();
+    }
+
+    // Pigment is kept only within BAND_EDGE px of the bands, softly. In
+    // painted px.
+    function bandMask() {
+      var c = document.createElement("canvas");
+      c.width = ICON_W * PAINT;
+      c.height = ICON_H * PAINT;
+      var ctx = c.getContext("2d");
+      ctx.filter = "blur(" + BAND_EDGE / 2 * PAINT + "px)";
+      ctx.scale(PAINT, PAINT);
+      ctx.fillStyle = ctx.strokeStyle = "#000";
+      ctx.lineWidth = 2 * BAND_EDGE;
+      ctx.lineJoin = "round";
+      widest.forEach(function (b) {
+        ctx.beginPath();
+        b.forEach(function (q, i) { if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); });
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      });
+      var data = ctx.getImageData(0, 0, c.width, c.height).data;
+      var mask = new Float32Array(c.width * c.height);
+      for (var k = 0; k < mask.length; k++) mask[k] = data[4 * k + 3] / 255;
+      return mask;
+    }
+
+    function draw() {
+      noLoop();
+      loadPixels();
+      var d = pixelDensity();
+      var mask = bandMask();
+      var W = ICON_W * PAINT, H = ICON_H * PAINT;
+      var big = document.createElement("canvas");
+      big.width = W;
+      big.height = H;
+      var bctx = big.getContext("2d");
+      var img = bctx.createImageData(W, H);
+      var dens = new Float32Array(W * H), k;
+      for (var y = 0; y < H; y++) {
+        for (var x = 0; x < W; x++) {
+          var q = 4 * (y * d * W * d + x * d);
+          k = y * W + x;
+          dens[k] = (1 - (pixels[q] + pixels[q + 1] + pixels[q + 2]) / 765) * mask[k];
+        }
+      }
+      // Density against the densest paint (98th percentile of the
+      // painted pixels), so the washes keep their tones.
+      var painted = Array.prototype.filter.call(dens, function (v) { return v > 0.02; }).sort(function (a, b) { return a - b; });
+      var max = painted.length ? painted[Math.floor(painted.length * 0.98)] : 1;
+      for (k = 0; k < dens.length; k++) {
+        img.data[4 * k] = INK[0];
+        img.data[4 * k + 1] = INK[1];
+        img.data[4 * k + 2] = INK[2];
+        img.data[4 * k + 3] = Math.round(255 * Math.pow(Math.min(1, dens[k] / max), 0.65));
+      }
+      bctx.putImageData(img, 0, 0);
+      // Down to the saved size, in halving steps, which keeps it smooth.
+      var out = big;
+      while (out.width > ICON_W * 2) {
+        var half = document.createElement("canvas");
+        half.width = Math.max(ICON_W, Math.round(out.width / 2));
+        half.height = Math.max(ICON_H, Math.round(out.height / 2));
+        var hctx = half.getContext("2d");
+        hctx.imageSmoothingQuality = "high";
+        hctx.drawImage(out, 0, 0, half.width, half.height);
+        out = half;
+      }
+      if (out.width !== ICON_W) {
+        var last = document.createElement("canvas");
+        last.width = ICON_W;
+        last.height = ICON_H;
+        var lctx = last.getContext("2d");
+        lctx.imageSmoothingQuality = "high";
+        lctx.drawImage(out, 0, 0, ICON_W, ICON_H);
+        out = last;
+      }
+      var url = out.toDataURL("image/webp", 0.92);
+      window.atlasDataURL = url;
+
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = "menu.webp";
+      link.textContent = "Download menu.webp (" + ICON_W + " x " + ICON_H + ")";
+      document.getElementById("status").replaceChildren(link);
+      var big = document.createElement("img");
+      big.src = url;
+      big.style.width = "324px";
+      document.body.appendChild(big);
+      var small = document.createElement("img");
+      small.src = url;
+      small.style.width = "36px";
+      document.body.appendChild(small);
+    }
+  </script>
+</body>
+</html>

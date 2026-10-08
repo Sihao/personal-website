@@ -13,8 +13,22 @@
 //     with a probability that falls off with distance,
 //   - a "stimulus" under the pointer that raises the local event rate,
 //   - a wave evoked from each click or tap.
-// When the visitor prefers reduced motion, spontaneous activity is off: the
-// field starts as a still frame and only moves in response to the pointer.
+// The field rests as a still frame, part way through its activity. It
+// comes alive only while the pointer is over it (or for a while after a
+// tap, or, on a touch screen, while it is the drawing most in view; see
+// site/static/js/in-view.js): events start, easing in. When the hover ends, events ease off and
+// stop, the blots that are lit fade back as their calcium decays, and the
+// field stops once all of them are dark. With reduced motion it stays a
+// still frame and never moves.
+//
+// Elements marked data-sketch-clear (the logotype and the menu button in
+// the see-through header over the field) keep the large light blots away:
+// none is placed where its pigment would reach into one, padded by the
+// attribute's value in px. Dark blots, dust and lines may pass behind
+// them. An element marked data-sketch-over (the header's bar) lies over
+// the top of the field, and sizes follow the height of the field below
+// its min-height (the bar's own height; on the home page the element is
+// taller, to hold the hanging logotype).
 //
 // The sprites come from /img/washes.webp (white, alpha = pigment density),
 // painted ahead of time with p5.brush by tools/wash-atlas.html.
@@ -35,6 +49,8 @@
   // Resting colours of the blots, with their weights: alabaster, white,
   // black, and two tints of Prussian blue towards alabaster.
   var BLOT_COLOURS = [["#e5e5e5", 2], ["#ffffff", 2], ["#000000", 3], ["#8790a6", 2], ["#4d5874", 2]];
+  // The light ones, kept away from the elements marked data-sketch-clear.
+  var LIGHT = ["#e5e5e5", "#ffffff", "#8790a6"];
   var LINE_COLOURS = [["#e5e5e5", 3], ["#ffffff", 1], ["#000000", 2], ["#8790a6", 1]];
 
   var STREAKS = "horizontal";     // direction of the ground's streaks: "horizontal" or "vertical"
@@ -60,6 +76,11 @@
   var EVOKED_EVENTS = 1.5;        // calcium per recruited blot
   var K_D = 0.8;                  // indicator half-saturation
   var PREWARM = 3;                // s simulated before the first frame
+  var TAP_HOLD = 2.5;             // s a tap keeps the field alive
+  // How fast events ease in and off: the natural frequency (1/s) of a
+  // critically damped spring on their rate. As in usv-card.js.
+  var SPIN_UP = 12;
+  var RUN_DOWN = 7;
 
   function ramp(e0, e1, x) {
     var t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
@@ -137,6 +158,9 @@
     var pending = [];             // scheduled events: {t, blot, amount}
     var t = 0;
     var pointerInside = false;
+    var viewing = false;          // the one in view on a touch screen (in-view.js)
+    var holdUntil = 0;            // ms, performance.now() until which a tap keeps it alive
+    var drive = 0, driveV = 0;    // how strongly events arrive, 0 to 1, and its rate of change
     var atlas = null;
     var activeAtlas = null;
     var restLayer = null;         // p5.Graphics: background and resting sprites
@@ -150,13 +174,47 @@
       return list[0][0];
     }
 
+    // How far the sticky bar (data-sketch-over) is stuck below where it
+    // sits at the top of the page: its header does not stick. A reload part
+    // way down the page restores the scroll before the field lays out, so
+    // the bar, and the elements in it, are measured where they sit.
+    function stuck(over) {
+      return over ? over.getBoundingClientRect().top - over.parentElement.getBoundingClientRect().top : 0;
+    }
+
+    // The parts of the field to keep clear, in field px: the boxes of the
+    // elements marked data-sketch-clear, padded, where they sit with the
+    // page at the top. Measured against the frame, not the canvas, which
+    // the parallax header moves within it.
+    function clearings(over) {
+      var box = el.getBoundingClientRect();
+      return Array.prototype.map.call(document.querySelectorAll("[data-sketch-clear]"), function (e) {
+        var r = e.getBoundingClientRect(), pad = parseFloat(e.getAttribute("data-sketch-clear")) || 0;
+        var dy = over && over.contains(e) ? stuck(over) : 0;
+        return { x0: r.left - box.left - pad, y0: r.top - dy - box.top - pad,
+                 x1: r.right - box.left + pad, y1: r.bottom - dy - box.top + pad };
+      }).filter(function (z) { return z.x1 > 0 && z.y1 > 0 && z.x0 < p.width && z.y0 < p.height; });
+    }
+
+    // Whether pigment reaching `reach` px from (x, y) would fall in a clearing.
+    function inClearing(zones, x, y, reach) {
+      return zones.some(function (z) {
+        return x + reach > z.x0 && x - reach < z.x1 && y + reach > z.y0 && y - reach < z.y1;
+      });
+    }
+
     // Streams run across the field at angle FLOW, spaced STREAM_GAP apart,
     // and bend gently with noise. Blots are strung along them with gaps
     // where the noise is low, so the field has clusters and clearings.
     function layout() {
       var w = p.width;
       var h = p.height;
-      var k = h / 220;
+      // A header over the top of the field leaves less of it to size by.
+      var over = document.querySelector("[data-sketch-over]");
+      var zones = clearings(over);
+      var top = over ? Math.max(0, over.getBoundingClientRect().top - stuck(over) - el.getBoundingClientRect().top +
+        (parseFloat(getComputedStyle(over).minHeight) || over.getBoundingClientRect().height)) : 0;
+      var k = (Math.min(h, Math.max(h - top, 0.5 * h))) / 220;
       var gap = STREAM_GAP * k;
       var dx = Math.cos(FLOW);
       var dy = Math.sin(FLOW);
@@ -182,6 +240,8 @@
           s += size * p.random(0.3, 0.55);
           if (x < -size || x > w + size || y < -size || y > h + size) continue;
           if (p.noise(x * 0.009 + 50, y * 0.009) < CLEARING) continue;
+          var colour = weighted(BLOT_COLOURS);
+          if (LIGHT.indexOf(colour) >= 0 && inClearing(zones, x, y, 0.4 * size)) continue;
           var blot = {
             x: x + p.random(-0.15, 0.15) * gap,
             y: y + p.random(-0.15, 0.15) * gap,
@@ -189,7 +249,7 @@
             rot: a + p.random(-0.2, 0.2),
             flip: p.random() < 0.5 ? -1 : 1,
             size: size,
-            colour: weighted(BLOT_COLOURS),
+            colour: colour,
             alpha: p.random(0.55, 0.95),
             decay: TAU_DECAY[0] + (TAU_DECAY[1] - TAU_DECAY[0]) *
               (size / k - BLOT_SIZE[0]) / (BLOT_SIZE[1] - BLOT_SIZE[0]),
@@ -325,11 +385,6 @@
         p.mouseY >= 0 && p.mouseY <= p.height;
     }
 
-    function settled() {
-      return !pointerInside && pending.length === 0 &&
-        blots.every(function (b) { return b.f < 0.01; });
-    }
-
     function step(dt) {
       var stim = stimulusOn();
       var k = 1 / (2 * STIM_SIGMA * STIM_SIGMA);
@@ -337,8 +392,8 @@
 
       t += dt;
 
-      if (!opts.reducedMotion && blots.length &&
-          Math.random() < WAVE_RATE * (p.width * p.height / 1e5) * dt) {
+      if (blots.length &&
+          Math.random() < drive * WAVE_RATE * (p.width * p.height / 1e5) * dt) {
         var origin = blots[Math.floor(Math.random() * blots.length)];
         wave(origin.x, origin.y, WAVE_LAMBDA, 1);
       }
@@ -350,19 +405,50 @@
       });
 
       blots.forEach(function (b) {
-        var rate = opts.reducedMotion ? 0 : RATE;
+        var rate = RATE;
         if (stim) {
           var d2 = (b.x - p.mouseX) * (b.x - p.mouseX) + (b.y - p.mouseY) * (b.y - p.mouseY);
           rate += STIM_RATE * Math.exp(-d2 * k);
         }
+        rate *= drive;
         if (Math.random() < rate * dt) b.c += 1;
         b.c *= Math.exp(-dt / b.decay);
         b.f += (b.c / (b.c + K_D) - b.f) * rise;
       });
     }
 
+    function alive() {
+      return pointerInside || viewing || performance.now() < holdUntil;
+    }
+
+    // Moves the drive towards its target along a critically damped
+    // spring, with its exact solution. As in usv-card.js.
+    function spin(dt) {
+      var target = alive() ? 1 : 0;
+      var w0 = target > drive ? SPIN_UP : RUN_DOWN;
+      var c1 = drive - target, c2 = driveV + w0 * c1;
+      var decay = Math.exp(-w0 * dt);
+      drive = target + (c1 + c2 * dt) * decay;
+      driveV = (c2 - w0 * (c1 + c2 * dt)) * decay;
+      if (Math.abs(drive - target) < 1e-3 && Math.abs(driveV) < 1e-2) {
+        drive = target;
+        driveV = 0;
+      }
+      drive = Math.max(0, Math.min(1, drive));
+    }
+
+    // Nothing left to fade: no events on their way, every blot dark.
+    function dark() {
+      return pending.length === 0 && blots.every(function (b) { return b.f < 0.01; });
+    }
+
+    // Runs the field for a while with events at full strength, for the
+    // still frame it rests on.
     function prewarm() {
+      var was = drive;
+      drive = 1;
       for (var i = 0; i < PREWARM * 30; i++) step(1 / 30);
+      drive = was;
     }
 
     p.setup = function () {
@@ -372,16 +458,26 @@
       p.canvas.style.visibility = "hidden";
       p.canvas.setAttribute("aria-hidden", "true");
       el.style.backgroundColor = BG;
-      el.addEventListener("pointerenter", function () {
-        pointerInside = true;
-        if (opts.reducedMotion) p.loop();
-      });
-      el.addEventListener("pointerleave", function () { pointerInside = false; });
-      el.addEventListener("pointerdown", function (e) {
-        var rect = el.getBoundingClientRect();
-        wave(e.clientX - rect.left, e.clientY - rect.top, EVOKED_LAMBDA, EVOKED_EVENTS);
-        if (opts.reducedMotion) p.loop();
-      });
+      if (!opts.reducedMotion) {
+        el.addEventListener("pointerenter", function (e) {
+          if (e.pointerType !== "mouse") return;
+          pointerInside = true;
+          p.loop();
+        });
+        el.addEventListener("pointerleave", function () { pointerInside = false; });
+        // No hover on a touch screen: run while most in view.
+        if (window.inView) window.inView.watch(el, function (on) {
+          viewing = on;
+          if (on) p.loop();
+        });
+        el.addEventListener("pointerdown", function (e) {
+          // The canvas, not the frame: the parallax header moves the canvas within it.
+          var rect = p.canvas.getBoundingClientRect();
+          wave(e.clientX - rect.left, e.clientY - rect.top, EVOKED_LAMBDA, EVOKED_EVENTS);
+          holdUntil = performance.now() + TAP_HOLD * 1000;
+          p.loop();
+        });
+      }
       layout();
       prewarm();
       loadAtlas().then(function (img) {
@@ -391,14 +487,16 @@
         p.canvas.style.visibility = "visible";
         p.redraw();
       });
-      if (opts.reducedMotion) p.noLoop();
+      p.noLoop();
     };
 
     p.draw = function () {
       if (!restLayer) return;
       // Small steps keep the briefest transients smooth at low frame rates.
-      if (p.frameCount > 1) {
+      var looping = p.isLooping();
+      if (looping && p.frameCount > 1) {
         var dt = Math.min(p.deltaTime / 1000, 0.1);
+        spin(dt);
         var n = Math.ceil(dt / 0.02);
         for (var i = 0; i < n; i++) step(dt / n);
       }
@@ -420,7 +518,7 @@
         ctx.restore();
       }
 
-      if (opts.reducedMotion && settled()) p.noLoop();
+      if (looping && !alive() && !drive && dark()) p.noLoop();
     };
 
     p.windowResized = function () {
@@ -429,7 +527,7 @@
       layout();
       prewarm();
       if (atlas) drawRestLayer();
-      if (opts.reducedMotion) p.redraw();
+      p.redraw();
     };
   };
 })();
